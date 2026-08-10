@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Mock Workday Application</title>
+</head>
+<body data-ats="workday">
+  <h1>Platform Engineer</h1>
+  <div id="step1">
+    <label>Name <input name="name" required /></label>
+    <label>Email <input name="email" type="email" required /></label>
+    <button type="button" id="next">Next</button>
+  </div>
+  <div id="step2" hidden>
+    <label>Phone <input name="phone" /></label>
+    <button type="button" id="submit">Submit</button>
+  </div>
+  <script>
+    document.getElementById('next').addEventListener('click', function () {
+      document.getElementById('step1').hidden = true;
+      document.getElementById('step2').hidden = false;
+    });
+    document.getElementById('submit').addEventListener('click', function () {
+      document.body.innerHTML = '<div data-testid="confirmation" data-mock-success="true"><h1>Thank you</h1><p>Application received</p></div>';
+    });
+  </script>
+</body>
+</html>

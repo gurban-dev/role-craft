@@ -1,0 +1,11 @@
+# Ignore local env
+.env
+.env.local
+.env.*.local
+
+# deps / build
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo

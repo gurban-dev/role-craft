@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Greenhouse Apply</title></head>
+<body data-ats="greenhouse">
+  <h1>Software Engineer</h1>
+  <form id="application_form">
+    <label>First Name <input id="first_name" name="first_name" /></label>
+    <label>Last Name <input id="last_name" name="last_name" /></label>
+    <label>Email <input id="email" name="email" type="email" /></label>
+    <label>Phone <input id="phone" name="phone" /></label>
+    <label>Resume <input id="resume" type="file" name="resume" /></label>
+    <button id="submit_app" type="button">Submit Application</button>
+  </form>
+  <script>
+    function showSuccess() {
+      document.body.setAttribute("data-mock-success", "true");
+      document.body.innerHTML =
+        '<h1 data-testid="confirmation">Thank you!</h1>' +
+        '<p class="confirmation">Application received</p>';
+    }
+    document.getElementById("submit_app").addEventListener("click", showSuccess);
+    document.getElementById("application_form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      showSuccess();
+    });
+  </script>
+</body>
+</html>

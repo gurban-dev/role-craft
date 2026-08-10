@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><title>Lever Application</title></head>
+<body data-ats="lever">
+  <h1>Backend Engineer</h1>
+  <form class="application-form" id="lever_form">
+    <label>Name <input name="name" placeholder="Full name" /></label>
+    <label>Email <input name="email" type="email" placeholder="Email" /></label>
+    <label>Phone <input name="phone" placeholder="Phone" /></label>
+    <input type="file" name="resume" />
+    <textarea name="comments" placeholder="Additional info"></textarea>
+    <button class="postings-btn-submit" type="button">Submit Application</button>
+  </form>
+  <script>
+    function showSuccess() {
+      document.body.setAttribute("data-mock-success", "true");
+      document.body.innerHTML =
+        '<h1 data-testid="confirmation">Thank you!</h1>' +
+        '<p class="confirmation">Application received</p>';
+    }
+    document.querySelector(".postings-btn-submit").addEventListener("click", showSuccess);
+    document.getElementById("lever_form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      showSuccess();
+    });
+  </script>
+</body>
+</html>

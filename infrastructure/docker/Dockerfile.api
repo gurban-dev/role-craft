@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+
+FROM python:3.12-slim-bookworm AS base
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl build-essential libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /usr/local/bin/uv
+
+FROM base AS deps
+COPY apps/api/pyproject.toml apps/api/README.md* /app/
+# Create minimal package for dependency resolution
+RUN mkdir -p /app/app && echo '__version__="1.0.0"' > /app/app/__init__.py
+RUN uv sync --no-dev || uv pip install --system -e ".[dev]" 2>/dev/null || true
+# Install pinned deps explicitly for reliability
+RUN uv pip install --system \
+    fastapi==0.141.1 "uvicorn[standard]==0.52.1" pydantic==2.13.4 pydantic-settings==2.10.1 \
+    email-validator==2.2.0 "sqlalchemy[asyncio]==2.0.51" asyncpg==0.30.0 alembic==1.19.1 \
+    redis==5.2.1 "celery[redis]==5.6.3" httpx==0.28.1 python-multipart==0.0.20 \
+    "passlib[bcrypt]==1.7.4" bcrypt==4.2.1 PyJWT==2.10.1 cryptography==45.0.5 \
+    structlog==25.4.0 orjson==3.11.1 openai==1.99.9 playwright==1.62.0 \
+    reportlab==5.0.0 tenacity==9.1.2 python-dateutil==2.9.0.post0 "psycopg[binary]==3.2.9"
+
+RUN playwright install --with-deps chromium
+
+FROM deps AS runtime
+RUN useradd --create-home --uid 10001 appuser
+COPY apps/api /app
+RUN mkdir -p /app/storage && chown -R appuser:appuser /app
+USER appuser
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
