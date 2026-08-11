@@ -218,6 +218,15 @@ class ResumeService:
             raise NotFoundError("Resume not found")
         return resume
 
+    async def list_for_user(self, user_id: UUID, *, limit: int = 100) -> list[Resume]:
+        result = await self.db.execute(
+            select(Resume)
+            .where(Resume.user_id == user_id)
+            .order_by(Resume.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def generate_for_application(self, user_id: UUID, application_id: UUID) -> Resume:
         from app.models import Application, User
 

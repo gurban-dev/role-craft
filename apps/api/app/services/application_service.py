@@ -72,6 +72,33 @@ class ApplicationService:
         )
         return app
 
+    async def begin_prepare(self, user: User, application_id: UUID) -> Application:
+        """Mark prep in progress without claiming READY_FOR_REVIEW (avoids Celery race)."""
+        app = await self.get(application_id, user.id)
+        if app.status in {
+            ApplicationStatus.READY_FOR_REVIEW.value,
+            ApplicationStatus.APPLYING.value,
+            ApplicationStatus.SUBMITTED.value,
+            ApplicationStatus.RESUME_GENERATING.value,
+            ApplicationStatus.CONTACT_RESEARCH.value,
+        }:
+            return app
+        if app.status in {
+            ApplicationStatus.DISCOVERED.value,
+            ApplicationStatus.MATCHED.value,
+            ApplicationStatus.ANALYZING.value,
+            ApplicationStatus.FAILED.value,
+            ApplicationStatus.NEEDS_HUMAN_ACTION.value,
+        }:
+            path = self._path_to(app.status, ApplicationStatus.RESUME_GENERATING)
+            for step in path:
+                await self.set_status(app, step, actor=str(user.id))
+            if app.status != ApplicationStatus.RESUME_GENERATING.value:
+                await self.set_status(
+                    app, ApplicationStatus.RESUME_GENERATING, actor=str(user.id)
+                )
+        return app
+
     async def prepare(self, user: User, application_id: UUID) -> Application:
         """Mark application ready for human review after prep pipeline."""
         app = await self.get(application_id, user.id)
@@ -82,8 +109,10 @@ class ApplicationService:
         if app.status in {
             ApplicationStatus.DISCOVERED.value,
             ApplicationStatus.MATCHED.value,
+            ApplicationStatus.RESUME_GENERATING.value,
             ApplicationStatus.RESUME_READY.value,
             ApplicationStatus.CONTACT_RESEARCH.value,
+            ApplicationStatus.ANALYZING.value,
         }:
             # Walk toward READY_FOR_REVIEW via legal hops when needed
             path = self._path_to(app.status, ApplicationStatus.READY_FOR_REVIEW)

@@ -289,6 +289,9 @@ async def _prepare(user_id: str, application_id: str, celery_id: str | None) -> 
             user = await db.get(User, uid)
             assert user
             await ResumeService(db).generate_for_application(uid, aid)
+            from app.services.answer_service import AnswerService
+
+            await AnswerService(db).draft_for_application(uid, aid)
             await ResearchService(db).research_for_application(uid, aid)
             await ContactService(db).discover_for_application(uid, aid)
             await OutreachService(db).generate_for_application(uid, aid)
@@ -340,44 +343,54 @@ async def _submit(user_id: str, application_id: str, celery_id: str | None) -> d
             if not url or not job:
                 raise NeedsHumanActionError("Missing application URL")
 
-            manager = PlaywrightManager()
-            async with manager.page() as page:
-                await page.goto(url, wait_until="domcontentloaded")
-                workflow = await get_workflow_for_url(page, url)
-                if await workflow.detect_blocker(page):
-                    await service.mark_needs_human(user, aid, "CAPTCHA/MFA or blocker detected")
-                    await _finish_run(db, run, ok=False, error="needs_human_action")
-                    return {"status": ApplicationStatus.NEEDS_HUMAN_ACTION.value}
+            from app.automation.workflows.linkedin import linkedin_easy_apply_enabled
+            from app.repositories.user_repository import UserRepository
 
-                from app.automation.models import ApplicationData
+            user_settings = await UserRepository(db).get_settings(uid)
+            token = linkedin_easy_apply_enabled.set(
+                bool(user_settings.linkedin_easy_apply_fallback) if user_settings else False
+            )
+            try:
+                manager = PlaywrightManager()
+                async with manager.page() as page:
+                    await page.goto(url, wait_until="domcontentloaded")
+                    workflow = await get_workflow_for_url(page, url)
+                    if await workflow.detect_blocker(page):
+                        await service.mark_needs_human(user, aid, "CAPTCHA/MFA or blocker detected")
+                        await _finish_run(db, run, ok=False, error="needs_human_action")
+                        return {"status": ApplicationStatus.NEEDS_HUMAN_ACTION.value}
 
-                data = ApplicationData(
-                    job_title=job.title,
-                    company=job.company,
-                    resume_path=resume.file_path if resume else None,
-                    answers=app.application_answers or {},
-                    candidate_email=user.email,
-                    candidate_name=user.name,
-                )
-                await workflow.fill_application(page, data)
-                result = await workflow.submit(page)
-                if result.needs_human:
-                    reason = result.message or "Human action required"
-                    await service.mark_needs_human(user, aid, reason)
-                    await _finish_run(db, run, ok=False, error=result.message)
-                    return {"status": ApplicationStatus.NEEDS_HUMAN_ACTION.value}
+                    from app.automation.models import ApplicationData
 
-                await service.record_submission(
-                    user,
-                    aid,
-                    confirmation_text=result.confirmation_text,
-                    confirmation_url=result.confirmation_url,
-                    external_id=result.external_id,
-                    screenshot_path=result.screenshot_path,
-                    run_id=run.id,
-                )
-                await _finish_run(db, run, ok=True, result={"status": "SUBMITTED"})
-                return {"status": "SUBMITTED"}
+                    data = ApplicationData(
+                        job_title=job.title,
+                        company=job.company,
+                        resume_path=resume.file_path if resume else None,
+                        answers=app.application_answers or {},
+                        candidate_email=user.email,
+                        candidate_name=user.name,
+                    )
+                    await workflow.fill_application(page, data)
+                    result = await workflow.submit(page)
+                    if result.needs_human:
+                        reason = result.message or "Human action required"
+                        await service.mark_needs_human(user, aid, reason)
+                        await _finish_run(db, run, ok=False, error=result.message)
+                        return {"status": ApplicationStatus.NEEDS_HUMAN_ACTION.value}
+
+                    await service.record_submission(
+                        user,
+                        aid,
+                        confirmation_text=result.confirmation_text,
+                        confirmation_url=result.confirmation_url,
+                        external_id=result.external_id,
+                        screenshot_path=result.screenshot_path,
+                        run_id=run.id,
+                    )
+                    await _finish_run(db, run, ok=True, result={"status": "SUBMITTED"})
+                    return {"status": "SUBMITTED"}
+            finally:
+                linkedin_easy_apply_enabled.reset(token)
         except NeedsHumanActionError as exc:
             await _finish_run(db, run, ok=False, error=str(exc))
             return {"status": ApplicationStatus.NEEDS_HUMAN_ACTION.value, "error": str(exc)}
@@ -391,6 +404,11 @@ async def _submit(user_id: str, application_id: str, celery_id: str | None) -> d
 @celery_app.task(name="app.workers.tasks.daily_scheduler_task", bind=True)
 def daily_scheduler_task(self) -> dict:
     return _run(_daily_scheduler(self.request.id))
+
+
+@celery_app.task(name="app.workers.tasks.retention_cleanup_task", bind=True)
+def retention_cleanup_task(self) -> dict:
+    return _run(_retention_cleanup(self.request.id))
 
 
 def dispatch_task(
@@ -440,9 +458,34 @@ def dispatch_task(
         async_result = submit_application_task.delay(user_id, application_id)
     elif task_type == AutomationTaskType.DAILY_SCHEDULER:
         async_result = daily_scheduler_task.delay()
+    elif task_type == AutomationTaskType.RETENTION_CLEANUP:
+        async_result = retention_cleanup_task.delay()
     else:
         raise ValueError(f"Unsupported task type: {task_type}")
     return async_result.id
+
+
+async def _retention_cleanup(celery_id: str | None) -> dict:
+    from app.services.retention_service import RetentionService
+
+    db = await _session()
+    try:
+        run = await _start_run(
+            db,
+            task_type=AutomationTaskType.RETENTION_CLEANUP.value,
+            user_id=None,
+            celery_task_id=celery_id,
+        )
+        try:
+            deleted = await RetentionService(db).cleanup()
+            await db.commit()
+            await _finish_run(db, run, ok=True, result=deleted)
+            return deleted
+        except Exception as exc:
+            await _finish_run(db, run, ok=False, error=str(exc))
+            raise
+    finally:
+        await db.close()
 
 
 async def _daily_scheduler(celery_id: str | None) -> dict:

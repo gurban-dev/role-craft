@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, require_csrf
 from app.core.exceptions import NotFoundError
 from app.models import UserSettings
 from app.repositories.user_repository import UserRepository
 from app.schemas import SettingsOut, SettingsUpdate
 from app.services.audit_service import AuditService
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(require_csrf)])
 
 
 @router.get("", response_model=SettingsOut)

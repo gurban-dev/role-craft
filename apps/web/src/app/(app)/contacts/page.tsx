@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { DataTable, type Column } from "@/components/DataTable";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui";
-import { ApiError, apiGet } from "@/lib/api";
-import type { Contact, Paginated } from "@/lib/types";
-import { asList } from "@/lib/endpoints";
+import { ApiError } from "@/lib/api";
+import type { Contact } from "@/lib/types";
+import { asList, endpoints } from "@/lib/endpoints";
 
 export const metadata: Metadata = {
   title: "Contacts",
@@ -14,12 +14,7 @@ export default async function ContactsPage() {
   let error: string | null = null;
 
   try {
-    contacts = asList(
-      await apiGet<Paginated<Contact> | Contact[]>("/api/contacts").catch(async () => {
-        // Soft-fallback when contacts endpoint is not yet available
-        return [] as Contact[];
-      }),
-    );
+    contacts = asList(await endpoints.contacts());
   } catch (err) {
     error =
       err instanceof ApiError

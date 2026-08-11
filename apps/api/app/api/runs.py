@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, require_csrf
 from app.core.exceptions import NotFoundError
 from app.models import AutomationRun
 from app.models.enums import AutomationStatus, AutomationTaskType
 from app.schemas import AutomationRunOut, TaskEnqueueResponse
 
-router = APIRouter(prefix="/runs", tags=["runs"])
+router = APIRouter(prefix="/runs", tags=["runs"], dependencies=[Depends(require_csrf)])
 
 
 class EnqueueRequest(BaseModel):

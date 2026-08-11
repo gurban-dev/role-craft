@@ -40,9 +40,41 @@ class JobService:
         self.users = UserRepository(db)
         self.scoring = ScoringService()
 
+    async def _scoring_for_user(self, user_id: UUID) -> ScoringService:
+        settings = await self.users.get_settings(user_id)
+        weights = None
+        if settings and isinstance(settings.scoring_weights, dict) and settings.scoring_weights:
+            weights = {
+                "technical": float(
+                    settings.scoring_weights.get("technical", self.scoring.weights["technical"])
+                ),
+                "experience": float(
+                    settings.scoring_weights.get("experience", self.scoring.weights["experience"])
+                ),
+                "seniority": float(
+                    settings.scoring_weights.get("seniority", self.scoring.weights["seniority"])
+                ),
+                "location": float(
+                    settings.scoring_weights.get("location", self.scoring.weights["location"])
+                ),
+                "domain": float(
+                    settings.scoring_weights.get("domain", self.scoring.weights["domain"])
+                ),
+                "salary": float(
+                    settings.scoring_weights.get("salary", self.scoring.weights["salary"])
+                ),
+                "preference": float(
+                    settings.scoring_weights.get("preference", self.scoring.weights["preference"])
+                ),
+            }
+        return ScoringService(weights=weights)
+
     async def search_and_persist(
         self, user: User, request: JobSearchRequest
     ) -> list[tuple[Job, JobMatch | None]]:
+        from app.services.rate_limit import RateLimitService
+
+        RateLimitService().check_job_discovery(str(user.id))
         sources = request.sources or list_job_sources()
         criteria = JobSearchCriteria(
             query=request.query,
@@ -59,6 +91,7 @@ class JobService:
                 logger.warning("job_source_failed", source=name, error=str(exc))
 
         profile = await self.users.get_profile(user.id)
+        self.scoring = await self._scoring_for_user(user.id)
         results: list[tuple[Job, JobMatch | None]] = []
         seen_keys: set[str] = set()
 
@@ -220,7 +253,59 @@ class JobService:
         if not profile:
             raise NotFoundError("Profile not found")
         job = await self.get_job(job_id)
+        await self._enrich_job_from_llm(job, str(user_id))
+        self.scoring = await self._scoring_for_user(user_id)
         return await self._upsert_match(job, profile)
+
+    async def _enrich_job_from_llm(self, job: Job, user_id: str) -> None:
+        """Optionally parse JD via JobAnalysis and fill missing structured fields."""
+        from app.core.config import get_settings
+        from app.integrations.llm.factory import get_llm_provider
+        from app.integrations.llm.schemas import JobAnalysis
+        from app.services.rate_limit import RateLimitService
+
+        settings = get_settings()
+        if not settings.openai_api_key:
+            return
+        # Skip if already richly structured
+        if job.technologies and job.requirements and len(job.description or "") < 50:
+            return
+        try:
+            RateLimitService(settings).check_llm(user_id)
+            provider = get_llm_provider(settings, db=self.db)
+            analysis = await provider.generate(
+                (
+                    "Analyze this job description. Extract skills, seniority, and salary "
+                    "when explicitly present. Do not invent requirements.\n\n"
+                    f"Title: {job.title}\nCompany: {job.company}\n"
+                    f"Description:\n{(job.description or '')[:6000]}"
+                ),
+                JobAnalysis,
+                operation="job_analysis",
+                user_id=user_id,
+            )
+            if analysis.technologies and not job.technologies:
+                job.technologies = analysis.technologies
+            if analysis.required_skills and not job.requirements:
+                job.requirements = analysis.required_skills
+            if analysis.responsibilities and not job.responsibilities:
+                job.responsibilities = analysis.responsibilities
+            if analysis.remote_status and not job.remote_status:
+                job.remote_status = analysis.remote_status
+            if analysis.location and not job.location:
+                job.location = analysis.location
+            if analysis.salary_min and job.salary_min is None:
+                job.salary_min = analysis.salary_min
+            if analysis.salary_max and job.salary_max is None:
+                job.salary_max = analysis.salary_max
+            if analysis.salary_currency and not job.salary_currency:
+                job.salary_currency = analysis.salary_currency
+            raw = dict(job.raw_payload or {})
+            raw["job_analysis"] = analysis.model_dump()
+            job.raw_payload = raw
+            await self.db.flush()
+        except Exception as exc:
+            logger.warning("job_analysis_failed", job_id=str(job.id), error=str(exc))
 
     async def queue_daily_pipeline(self, user_id: UUID) -> int:
         """Queue prepare tasks for strongest matches under daily remaining capacity."""

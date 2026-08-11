@@ -272,6 +272,8 @@ class ResumeOut(ORMModel):
 
 class OutreachOut(ORMModel):
     id: UUID
+    application_id: UUID | None = None
+    contact_id: UUID | None = None
     recipient_name: str
     recipient_type: str
     company_problem: str
@@ -280,3 +282,14 @@ class OutreachOut(ORMModel):
     generated_message: str
     status: str
     channel: str
+    sent_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class CredentialOut(ORMModel):
+    id: UUID
+    provider: str
+    status: str
+    last_verified_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

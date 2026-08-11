@@ -104,6 +104,32 @@ class DashboardService:
             if gate.get("passed") is False:
                 rejected_by_quality += 1
 
+        submitted_apps = (
+            await self.db.execute(
+                select(Application).where(
+                    Application.user_id == user.id,
+                    Application.status == ApplicationStatus.SUBMITTED.value,
+                )
+            )
+        ).scalars().all()
+        submitted_count = len(submitted_apps)
+        response_rate = None
+        interview_rate = None
+        if submitted_count > 0:
+            responded = sum(
+                1
+                for a in submitted_apps
+                if a.confirmation_text or a.confirmation_url or a.external_application_id
+            )
+            interviews = sum(
+                1
+                for a in submitted_apps
+                if (a.application_answers or {}).get("outcome") == "interview"
+                or (a.quality_gate or {}).get("interview") is True
+            )
+            response_rate = round(responded / submitted_count, 4)
+            interview_rate = round(interviews / submitted_count, 4)
+
         return DashboardStats(
             daily_target=daily_target,
             submitted_today=submitted_today,
@@ -113,8 +139,8 @@ class DashboardService:
             remaining=max(0, daily_target - submitted_today),
             submitted_this_week=submitted_week,
             average_match_score=avg_score,
-            response_rate=None,
-            interview_rate=None,
+            response_rate=response_rate,
+            interview_rate=interview_rate,
             by_source={r[0]: int(r[1]) for r in by_source_rows},
             by_company={r[0]: int(r[1]) for r in by_company_rows},
             pipeline=by_status,

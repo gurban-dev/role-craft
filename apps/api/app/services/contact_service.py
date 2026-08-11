@@ -122,6 +122,15 @@ class ContactService:
         )
         return list(result.scalars().all())
 
+    async def list_for_user(self, user_id: UUID, *, limit: int = 100) -> list[Contact]:
+        result = await self.db.execute(
+            select(Contact)
+            .where(Contact.user_id == user_id)
+            .order_by(Contact.confidence_score.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def discover_for_application(self, user_id: UUID, application_id: UUID) -> Contact | None:
         from app.models import Application, User
 

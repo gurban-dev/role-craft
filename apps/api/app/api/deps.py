@@ -26,8 +26,10 @@ async def get_current_user(
     token: str | None = None
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization.split(" ", 1)[1].strip()
+        request.state.auth_via = "bearer"
     elif session_cookie:
         token = session_cookie
+        request.state.auth_via = "cookie"
     if not token:
         raise AuthError("Authentication required")
     try:
@@ -47,11 +49,23 @@ async def require_csrf(
     request: Request,
     csrf_header: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     csrf_cookie: Annotated[str | None, Cookie(alias="jaa_csrf")] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> None:
+    """Enforce CSRF for cookie-authenticated mutating requests.
+
+    Bearer-token API clients are exempt. Test env is exempt for suite simplicity.
+    """
     if request.method in {"GET", "HEAD", "OPTIONS"}:
         return
     settings = get_settings()
     if settings.app_env == "test":
+        return
+    # Bearer auth does not need CSRF (no ambient cookie session)
+    if authorization and authorization.lower().startswith("bearer "):
+        return
+    # Only enforce when a session cookie is present (browser flow)
+    session_cookie = request.cookies.get(settings.cookie_name)
+    if not session_cookie:
         return
     if not csrf_header or not csrf_cookie or csrf_header != csrf_cookie:
         raise ForbiddenError("CSRF validation failed")
@@ -59,3 +73,4 @@ async def require_csrf(
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+CsrfProtected = Annotated[None, Depends(require_csrf)]

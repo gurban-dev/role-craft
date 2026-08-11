@@ -4,24 +4,36 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, require_csrf
 from app.schemas import ContactOut
 from app.services.contact_service import ContactService
+from app.services.rate_limit import RateLimitService
 
-router = APIRouter(prefix="/contacts", tags=["contacts"])
+router = APIRouter(prefix="/contacts", tags=["contacts"], dependencies=[Depends(require_csrf)])
 
 
 class DiscoverRequest(BaseModel):
     job_id: UUID
 
 
+@router.get("", response_model=list[ContactOut])
+async def list_all_contacts(
+    user: CurrentUser,
+    db: DbSession,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[ContactOut]:
+    contacts = await ContactService(db).list_for_user(user.id, limit=limit)
+    return [ContactOut.model_validate(c) for c in contacts]
+
+
 @router.post("/discover", response_model=ContactOut | None)
 async def discover_contact(
     data: DiscoverRequest, user: CurrentUser, db: DbSession
 ) -> ContactOut | None:
+    RateLimitService().check_research(str(user.id))
     contact = await ContactService(db).discover(user, data.job_id)
     if not contact:
         return None

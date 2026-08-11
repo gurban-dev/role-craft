@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.core.logging import get_logger
 from app.integrations.llm.factory import get_llm_provider
 from app.integrations.llm.schemas import OutreachDraft
 from app.models import Application, CompanyResearch, Contact, OutreachMessage, User
 from app.models.enums import ContactType, OutreachStatus
+from app.services.audit_service import AuditService
 
 logger = get_logger(__name__)
 
@@ -22,6 +24,97 @@ class OutreachService:
     def __init__(self, db: AsyncSession, settings: Settings | None = None) -> None:
         self.db = db
         self.settings = settings or get_settings()
+        self.audit = AuditService(db)
+
+    async def get(self, outreach_id: UUID, user_id: UUID) -> OutreachMessage:
+        msg = await self.db.get(OutreachMessage, outreach_id)
+        if not msg or msg.user_id != user_id:
+            raise NotFoundError("Outreach message not found")
+        return msg
+
+    async def list_for_user(
+        self, user_id: UUID, *, status: str | None = None, limit: int = 100
+    ) -> list[OutreachMessage]:
+        stmt = (
+            select(OutreachMessage)
+            .where(OutreachMessage.user_id == user_id)
+            .order_by(OutreachMessage.created_at.desc())
+            .limit(limit)
+        )
+        if status:
+            stmt = stmt.where(OutreachMessage.status == status)
+        return list((await self.db.execute(stmt)).scalars().all())
+
+    async def approve(self, user_id: UUID, outreach_id: UUID) -> OutreachMessage:
+        msg = await self.get(outreach_id, user_id)
+        if msg.status == OutreachStatus.APPROVED.value:
+            return msg
+        if msg.status in {
+            OutreachStatus.SKIPPED.value,
+            OutreachStatus.REJECTED.value,
+            OutreachStatus.SENT.value,
+        }:
+            raise ConflictError(f"Cannot approve outreach in status {msg.status}")
+        previous = msg.status
+        msg.status = OutreachStatus.APPROVED.value
+        await self.db.flush()
+        await self.audit.log(
+            actor=str(user_id),
+            action="outreach.approve",
+            entity_type="outreach_message",
+            entity_id=msg.id,
+            previous_state=previous,
+            new_state=msg.status,
+        )
+        return msg
+
+    async def reject(self, user_id: UUID, outreach_id: UUID) -> OutreachMessage:
+        msg = await self.get(outreach_id, user_id)
+        if msg.status == OutreachStatus.REJECTED.value:
+            return msg
+        if msg.status == OutreachStatus.SENT.value:
+            raise ConflictError("Cannot reject a sent outreach message")
+        previous = msg.status
+        msg.status = OutreachStatus.REJECTED.value
+        await self.db.flush()
+        await self.audit.log(
+            actor=str(user_id),
+            action="outreach.reject",
+            entity_type="outreach_message",
+            entity_id=msg.id,
+            previous_state=previous,
+            new_state=msg.status,
+        )
+        return msg
+
+    async def send(self, user_id: UUID, outreach_id: UUID) -> OutreachMessage:
+        """Mark outreach as sent after approval (delivery is external/manual)."""
+        msg = await self.get(outreach_id, user_id)
+        if msg.status == OutreachStatus.SENT.value:
+            return msg
+        if msg.status not in {
+            OutreachStatus.APPROVED.value,
+            OutreachStatus.PENDING_APPROVAL.value,
+        }:
+            # Allow send from draft only if already approved via PENDING path
+            if msg.status == OutreachStatus.DRAFT.value:
+                raise ConflictError("Outreach must be approved before send")
+            raise ConflictError(f"Cannot send outreach in status {msg.status}")
+        if not msg.generated_message or msg.generated_message.startswith("[SKIPPED]"):
+            raise ConflictError("Outreach message is empty or was skipped")
+        previous = msg.status
+        msg.status = OutreachStatus.SENT.value
+        msg.sent_at = datetime.now(UTC)
+        await self.db.flush()
+        await self.audit.log(
+            actor=str(user_id),
+            action="outreach.send",
+            entity_type="outreach_message",
+            entity_id=msg.id,
+            previous_state=previous,
+            new_state=msg.status,
+        )
+        return msg
 
     async def generate_for_application(
         self, user_id: UUID | User, application_id: UUID

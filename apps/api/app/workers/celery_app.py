@@ -34,5 +34,9 @@ celery_app.conf.update(
             "task": "app.workers.tasks.daily_scheduler_task",
             "schedule": crontab(minute=0, hour="*/1"),
         },
+        "retention-cleanup-daily": {
+            "task": "app.workers.tasks.retention_cleanup_task",
+            "schedule": crontab(minute=30, hour=3),
+        },
     },
 )

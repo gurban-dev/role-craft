@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, require_csrf
 from app.integrations.job_sources.registry import list_job_sources
 from app.schemas import JobMatchOut, JobOut, JobSearchRequest
 from app.services.job_service import JobService
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_csrf)])
 
 
 @router.get("/sources")

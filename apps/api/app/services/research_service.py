@@ -112,6 +112,15 @@ class ResearchService:
             raise NotFoundError("Research not found")
         return row
 
+    async def list_for_user(self, user_id: UUID, *, limit: int = 100) -> list[CompanyResearch]:
+        result = await self.db.execute(
+            select(CompanyResearch)
+            .where(CompanyResearch.user_id == user_id)
+            .order_by(CompanyResearch.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def research_for_application(
         self, user_id: UUID, application_id: UUID
     ) -> CompanyResearch:

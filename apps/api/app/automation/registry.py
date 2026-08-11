@@ -7,12 +7,14 @@ from playwright.async_api import Page
 from app.automation.workflows.generic import GenericWorkflow
 from app.automation.workflows.greenhouse import GreenhouseWorkflow
 from app.automation.workflows.lever import LeverWorkflow
+from app.automation.workflows.linkedin import LinkedInEasyApplyWorkflow
 from app.automation.workflows.workday import WorkdayWorkflow
 
 _WORKFLOWS = [
     GreenhouseWorkflow(),
     LeverWorkflow(),
     WorkdayWorkflow(),
+    LinkedInEasyApplyWorkflow(),
     GenericWorkflow(),
 ]
 

@@ -1,13 +1,17 @@
 import { apiGet, apiPost, apiPut } from "./api";
 import type {
   Application,
+  Contact,
   DashboardStats,
   HealthStatus,
   Job,
+  OutreachMessage,
   Paginated,
   Profile,
   QueueInfo,
   ReadyStatus,
+  ResearchNote,
+  ResumeSummary,
   Run,
   Settings,
   WorkerInfo,
@@ -40,6 +44,14 @@ export const endpoints = {
   queues: () => apiGet<QueueInfo[]>("/api/dev/queues").catch(() => [] as QueueInfo[]),
   workers: () =>
     apiGet<WorkerInfo[]>("/api/dev/workers").catch(() => [] as WorkerInfo[]),
+  contacts: () => apiGet<Paginated<Contact> | Contact[]>("/api/contacts"),
+  resumes: () => apiGet<Paginated<ResumeSummary> | ResumeSummary[]>("/api/resumes"),
+  research: () => apiGet<Paginated<ResearchNote> | ResearchNote[]>("/api/research"),
+  outreach: () =>
+    apiGet<Paginated<OutreachMessage> | OutreachMessage[]>("/api/outreach"),
+  approveOutreach: (id: string) =>
+    apiPost<OutreachMessage>(`/api/outreach/${id}/approve`),
+  sendOutreach: (id: string) => apiPost<OutreachMessage>(`/api/outreach/${id}/send`),
 };
 
 export function asList<T>(data: Paginated<T> | T[] | null | undefined): T[] {

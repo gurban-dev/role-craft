@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, require_csrf
 from app.schemas import CandidateProfileOut, CandidateProfileUpdate
 from app.services.profile_service import ProfileService
 
-router = APIRouter(prefix="/profile", tags=["profile"])
+router = APIRouter(prefix="/profile", tags=["profile"], dependencies=[Depends(require_csrf)])
 
 
 @router.get("", response_model=CandidateProfileOut)

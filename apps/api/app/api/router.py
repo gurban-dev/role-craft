@@ -6,9 +6,11 @@ from app.api import (
     applications,
     auth,
     contacts,
+    credentials,
     dashboard,
     health,
     jobs,
+    outreach,
     profile,
     research,
     resumes,
@@ -25,6 +27,8 @@ api_router.include_router(applications.router)
 api_router.include_router(resumes.router)
 api_router.include_router(contacts.router)
 api_router.include_router(research.router)
+api_router.include_router(outreach.router)
+api_router.include_router(credentials.router)
 api_router.include_router(settings.router)
 api_router.include_router(runs.router)
 api_router.include_router(dashboard.router)

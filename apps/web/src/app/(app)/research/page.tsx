@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { DataTable, type Column } from "@/components/DataTable";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui";
-import { ApiError, apiGet } from "@/lib/api";
-import { asList } from "@/lib/endpoints";
-import type { Paginated, ResearchNote } from "@/lib/types";
+import { ApiError } from "@/lib/api";
+import { asList, endpoints } from "@/lib/endpoints";
+import type { ResearchNote } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -15,11 +15,22 @@ export default async function ResearchPage() {
   let error: string | null = null;
 
   try {
-    notes = asList(
-      await apiGet<Paginated<ResearchNote> | ResearchNote[]>("/api/research").catch(
-        async () => [] as ResearchNote[],
-      ),
-    );
+    const raw = asList(await endpoints.research());
+    notes = raw.map((r) => ({
+      id: r.id,
+      company: r.company,
+      summary:
+        (r as ResearchNote).summary
+        ?? (r as { problem_summary?: string }).problem_summary
+        ?? null,
+      highlights: (r as ResearchNote).highlights
+        ?? ((r as { evidence?: { claim?: string }[] }).evidence ?? []).map(
+          (e) => e.claim ?? "",
+        ).filter(Boolean),
+      sources: (r as ResearchNote).sources ?? (r as { sources?: string[] }).sources ?? [],
+      updated_at: (r as ResearchNote).updated_at
+        ?? (r as { created_at?: string }).created_at,
+    }));
   } catch (err) {
     error =
       err instanceof ApiError

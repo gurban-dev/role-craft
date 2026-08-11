@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { DataTable, type Column } from "@/components/DataTable";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui";
-import { ApiError, apiGet } from "@/lib/api";
-import { asList } from "@/lib/endpoints";
-import type { Paginated, ResumeSummary } from "@/lib/types";
+import { ApiError } from "@/lib/api";
+import { asList, endpoints } from "@/lib/endpoints";
+import type { ResumeSummary } from "@/lib/types";
 
 export const metadata: Metadata = {
   title: "Resumes",
@@ -14,11 +14,16 @@ export default async function ResumesPage() {
   let error: string | null = null;
 
   try {
-    resumes = asList(
-      await apiGet<Paginated<ResumeSummary> | ResumeSummary[]>("/api/resumes").catch(
-        async () => [] as ResumeSummary[],
-      ),
-    );
+    const raw = asList(await endpoints.resumes());
+    resumes = raw.map((r) => ({
+      id: r.id,
+      name: (r as ResumeSummary & { kind?: string }).name
+        ?? (r as { kind?: string }).kind
+        ?? "Resume",
+      version: (r as { version?: string | number | null }).version?.toString() ?? null,
+      tailored: (r as { kind?: string }).kind === "TAILORED",
+      file_url: (r as { file_path?: string | null }).file_path ?? null,
+    }));
   } catch (err) {
     error =
       err instanceof ApiError
