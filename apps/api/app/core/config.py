@@ -45,6 +45,15 @@ class Settings(BaseSettings):
         default="http://localhost:3000,http://127.0.0.1:3000",
         description="Comma-separated allowed CORS origins",
     )
+    web_app_url: str = Field(
+        default="http://localhost:3000",
+        description="Frontend origin for OAuth redirects after login",
+    )
+
+    # Google OAuth (optional; Google sign-in disabled when unset)
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
     # LLM
     llm_provider: Literal["openai"] = "openai"
@@ -112,6 +121,18 @@ class Settings(BaseSettings):
                 "OPENAI_API_KEY is not configured. Set it in the environment to use AI features."
             )
         return self.openai_api_key
+
+    @property
+    def google_oauth_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    def require_google_oauth(self) -> tuple[str, str]:
+        if not self.google_oauth_configured:
+            raise RuntimeError(
+                "Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+            )
+        assert self.google_client_id and self.google_client_secret
+        return self.google_client_id, self.google_client_secret
 
 
 @lru_cache

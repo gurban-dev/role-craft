@@ -28,6 +28,7 @@ class AuthService:
             email=data.email.lower(),
             name=data.name,
             hashed_password=hash_password(data.password),
+            auth_providers=["password"],
         )
         self.db.add(user)
         await self.db.flush()
@@ -41,7 +42,11 @@ class AuthService:
     async def login(self, data: LoginRequest) -> tuple[User, str, str]:
         result = await self.db.execute(select(User).where(User.email == data.email.lower()))
         user = result.scalar_one_or_none()
-        if not user or not verify_password(data.password, user.hashed_password):
+        if not user:
+            raise AuthError("Invalid email or password")
+        if not user.hashed_password:
+            raise AuthError("This account uses Google sign-in. Continue with Google instead.")
+        if not verify_password(data.password, user.hashed_password):
             raise AuthError("Invalid email or password")
         token = create_access_token(str(user.id))
         csrf = generate_csrf_token()

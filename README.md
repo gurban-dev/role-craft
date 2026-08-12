@@ -90,6 +90,7 @@ pnpm dev
 See [`.env.example`](.env.example). Critical:
 
 - `SECRET_KEY`, `JWT_SECRET` — session/crypto secrets
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `WEB_APP_URL` — optional Google sign-in
 - `DATABASE_URL`, `REDIS_URL`, `CELERY_*`
 - `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`
 - `AUTO_SUBMIT_ENABLED=false` (Approval Mode default)
@@ -108,6 +109,8 @@ uv run alembic revision --autogenerate -m "description"   # when schema changes
 ## Authentication
 
 HTTP-only JWT cookie (`jaa_session`) + CSRF cookie (`jaa_csrf`). Send `X-CSRF-Token` on mutating requests from the browser.
+
+**Google sign-in:** set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` (must match the authorized redirect URI in Google Cloud Console — default `http://localhost:8000/api/auth/google/callback`). Also set `WEB_APP_URL` to your frontend origin. Users can continue with Google from login/register; matching emails link to existing password accounts.
 
 ## Daily workflow
 
