@@ -4,6 +4,18 @@ Production-ready full-stack system that discovers software engineering roles, ra
 
 **Quality over volume.** Default daily target: 10 high-quality applications. The system never lowers the match threshold merely to reach 10.
 
+## Local URLs
+
+Copy and open these in your browser after the servers are running:
+
+| App | URL |
+|-----|-----|
+| Frontend (web) | http://localhost:3000 |
+| Backend server | http://localhost:8000 |
+| Backend API docs (OpenAPI) | http://localhost:8000/docs |
+| Backend API health | http://localhost:8000/api/health |
+| Backend API root prefix | http://localhost:8000/api |
+
 ## Architecture
 
 ```
