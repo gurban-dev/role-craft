@@ -109,6 +109,10 @@ class JobService:
 
             if existing:
                 job = existing
+                if item.posted_at and (job.posted_at is None or item.posted_at > job.posted_at):
+                    job.posted_at = item.posted_at
+                if item.applicant_count is not None:
+                    job.applicant_count = item.applicant_count
             else:
                 job = Job(
                     title=item.title,
@@ -127,6 +131,9 @@ class JobService:
                     official_application_url=item.official_application_url,
                     external_job_id=item.external_job_id,
                     closing_date=item.closing_date,
+                    posted_at=getattr(item, "posted_at", None),
+                    applicant_count=getattr(item, "applicant_count", None),
+                    country_code=getattr(item, "country_code", None),
                     status=JobStatus.ACTIVE.value,
                     normalized_key=key,
                     raw_payload=item.raw_payload,
@@ -148,6 +155,7 @@ class JobService:
 
     async def _upsert_match(self, job: Job, profile: CandidateProfile) -> JobMatch:
         score = self.scoring.score(job, profile)
+        job.fit_score_10 = score.fit_score_10
         existing = await self.jobs.get_match(job.id, profile.id)
         if existing:
             existing.overall_score = score.overall_score

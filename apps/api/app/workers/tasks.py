@@ -489,14 +489,15 @@ async def _retention_cleanup(celery_id: str | None) -> dict:
 
 
 async def _daily_scheduler(celery_id: str | None) -> dict:
-    """Select high-quality matches up to daily limit; do not lower quality to hit 10."""
+    """Discover EEA jobs (hard filters) then queue prepares for top matches."""
+    from app.services.eea_job_search_service import EEAJobSearchService
     from app.services.job_service import JobService
 
     db = await _session()
     try:
         result = await db.execute(select(User).where(User.is_active.is_(True)))
         users = list(result.scalars().all())
-        totals = {"users": 0, "queued": 0}
+        totals = {"users": 0, "queued": 0, "eea_jobs": 0}
         for user in users:
             run = await _start_run(
                 db,
@@ -505,10 +506,19 @@ async def _daily_scheduler(celery_id: str | None) -> dict:
                 celery_task_id=celery_id,
             )
             try:
+                settings = get_settings()
+                eea_count = 0
+                if settings.eea_search_enabled:
+                    rows = await EEAJobSearchService(db).discover_and_rank(user, limit=10)
+                    eea_count = len(rows)
+                    totals["eea_jobs"] += eea_count
                 queued = await JobService(db).queue_daily_pipeline(user.id)
                 totals["users"] += 1
                 totals["queued"] += queued
-                await _finish_run(db, run, ok=True, result={"queued": queued})
+                await db.commit()
+                await _finish_run(
+                    db, run, ok=True, result={"queued": queued, "eea_jobs": eea_count}
+                )
             except Exception as exc:
                 await _finish_run(db, run, ok=False, error=str(exc))
         return totals

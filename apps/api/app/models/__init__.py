@@ -96,6 +96,7 @@ class CandidateProfile(Base, TimestampMixin):
     years_experience: Mapped[float] = mapped_column(Float, default=0.0)
     seniority_level: Mapped[str] = mapped_column(String(32), default="mid")
     answer_bank: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    structured_profile: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
 
     user: Mapped[User] = relationship(back_populates="profile")
 
@@ -147,6 +148,13 @@ class Job(Base, TimestampMixin):
     discovered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applicant_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    is_eea: Mapped[bool] = mapped_column(Boolean, default=False)
+    english_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    visa_sponsorship: Mapped[str] = mapped_column(String(32), default="unknown")
+    fit_score_10: Mapped[float | None] = mapped_column(Float, nullable=True)
     closing_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(32), default=JobStatus.ACTIVE.value)
     normalized_key: Mapped[str | None] = mapped_column(String(512))

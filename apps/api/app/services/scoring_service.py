@@ -40,7 +40,6 @@ def _tokenize(items: list[Any]) -> set[str]:
 
 def _extract_job_skills(job: Job) -> set[str]:
     skills = _tokenize(job.technologies) | _tokenize(job.requirements)
-    # Also pull common tech tokens from description
     desc = _norm(job.description or "")
     for token in [
         "python",
@@ -100,6 +99,7 @@ class ScoreResult:
     explanation: str
     score_breakdown: dict[str, Any]
     recommendation: MatchRecommendation
+    fit_score_10: float = 0.0
 
 
 class ScoringService:
@@ -131,7 +131,6 @@ class ScoringService:
             missing = sorted(job_skills - candidate_skills)
             skill_score = len(matched) / max(len(job_skills), 1)
 
-        # Experience: crude years extraction from JD
         years_needed = self._years_required(
             job.description + " " + " ".join(map(str, job.requirements))
         )
@@ -162,6 +161,15 @@ class ScoringService:
         )
         overall = round(min(1.0, max(0.0, overall)), 4)
 
+        fit_10 = self._fit_score_10(
+            skill_score=skill_score,
+            experience_score=experience_score,
+            seniority_score=seniority_score,
+            missing=missing,
+            job_skills=job_skills,
+            matched=matched,
+        )
+
         strengths = []
         weaknesses = []
         if skill_score >= 0.7:
@@ -180,6 +188,7 @@ class ScoringService:
         recommendation = self._recommend(overall)
         explanation = (
             f"Overall match {overall:.0%} ({recommendation.value}). "
+            f"Fit Score {fit_10:.1f}/10. "
             f"Technical {skill_score:.0%}, experience {experience_score:.0%}, "
             f"seniority {seniority_score:.0%}, location {location_score:.0%}."
         )
@@ -198,6 +207,7 @@ class ScoringService:
             "job_seniority": job_seniority,
             "candidate_seniority": cand_seniority,
             "years_required": years_needed,
+            "fit_score_10": fit_10,
         }
         return ScoreResult(
             overall_score=overall,
@@ -215,7 +225,34 @@ class ScoringService:
             explanation=explanation,
             score_breakdown=breakdown,
             recommendation=recommendation,
+            fit_score_10=fit_10,
         )
+
+    def _fit_score_10(
+        self,
+        *,
+        skill_score: float,
+        experience_score: float,
+        seniority_score: float,
+        missing: list[str],
+        job_skills: set[str],
+        matched: list[str],
+    ) -> float:
+        """Strict 0–10 Fit Score; missing mandatory skills reduce the score."""
+        base = (
+            0.45 * skill_score
+            + 0.25 * experience_score
+            + 0.20 * seniority_score
+            + 0.10 * (1.0 if matched else 0.4)
+        ) * 10.0
+        if job_skills and missing:
+            miss_ratio = len(missing) / max(len(job_skills), 1)
+            base -= min(3.5, miss_ratio * 4.0)
+        if seniority_score < 0.45:
+            base -= 1.5
+        if experience_score < 0.5:
+            base -= 1.0
+        return round(min(10.0, max(0.0, base)), 1)
 
     def _recommend(self, score: float) -> MatchRecommendation:
         threshold = self.settings.min_match_score

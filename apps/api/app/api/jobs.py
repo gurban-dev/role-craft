@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import CurrentUser, DbSession, require_csrf
 from app.integrations.job_sources.registry import list_job_sources
-from app.schemas import JobMatchOut, JobOut, JobSearchRequest
+from app.schemas import EEAJobRow, EEAJobSearchRequest, JobMatchOut, JobOut, JobSearchRequest
+from app.services.eea_job_search_service import EEAJobSearchService
 from app.services.job_service import JobService
 
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(require_csrf)])
@@ -39,6 +40,17 @@ async def search_jobs(
 ) -> list[JobOut]:
     results = await JobService(db).search_and_persist(user, data)
     return [JobOut.model_validate(job) for job, _ in results]
+
+
+@router.post("/eea-search", response_model=list[EEAJobRow])
+async def eea_search(
+    data: EEAJobSearchRequest, user: CurrentUser, db: DbSession
+) -> list[EEAJobRow]:
+    """EEA software-engineering discovery with hard filters; max 10 rows, fit >= 7."""
+    rows = await EEAJobSearchService(db).discover_and_rank(
+        user, query=data.query, limit=data.limit, sources=data.sources
+    )
+    return [EEAJobRow.model_validate(r) for r in rows]
 
 
 @router.get("/matches", response_model=list[JobMatchOut])

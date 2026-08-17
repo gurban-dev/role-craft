@@ -55,6 +55,7 @@ class CandidateProfileUpdate(BaseModel):
     years_experience: float | None = None
     seniority_level: str | None = None
     answer_bank: dict[str, Any] | None = None
+    structured_profile: dict[str, Any] | None = None
 
 
 class CandidateProfileOut(ORMModel):
@@ -79,6 +80,7 @@ class CandidateProfileOut(ORMModel):
     years_experience: float
     seniority_level: str
     answer_bank: dict[str, Any]
+    structured_profile: dict[str, Any] = {}
     updated_at: datetime
 
 
@@ -131,7 +133,42 @@ class JobOut(ORMModel):
     official_application_url: str | None
     external_job_id: str
     discovered_at: datetime
+    posted_at: datetime | None = None
+    applicant_count: int | None = None
+    country_code: str | None = None
+    is_eea: bool = False
+    fit_score_10: float | None = None
+    visa_sponsorship: str = "unknown"
     status: str
+
+
+class EEAJobSearchRequest(BaseModel):
+    query: str = "software engineer"
+    limit: int = Field(default=10, ge=1, le=10)
+    sources: list[str] | None = None
+
+
+class EEAJobRow(BaseModel):
+    rank: int
+    role: str
+    company: str
+    posted: str
+    source: str
+    fit_score: float
+    apply_link: str
+
+
+class NetworkingRequest(BaseModel):
+    job_link: str
+
+
+class ResumeExtractRequest(BaseModel):
+    resume_text: str = Field(min_length=40)
+
+
+class OutreachMessagesRequest(BaseModel):
+    job_id: UUID
+    contact_ids: list[UUID] | None = None
 
 
 class JobMatchOut(ORMModel):

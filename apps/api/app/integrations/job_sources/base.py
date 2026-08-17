@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Protocol
 
 
@@ -14,6 +14,8 @@ class JobSearchCriteria:
     remote_only: bool = False
     limit: int = 25
     company_board_token: str | None = None
+    posted_within_hours: int | None = None
+    eea_only: bool = False
     extras: dict[str, Any] = field(default_factory=dict)
 
 
@@ -35,6 +37,11 @@ class DiscoveredJob:
     responsibilities: list[Any] = field(default_factory=list)
     technologies: list[Any] = field(default_factory=list)
     closing_date: date | None = None
+    posted_at: datetime | None = None
+    applicant_count: int | None = None
+    country_code: str | None = None
+    employment_type: str | None = None
+    seniority_label: str | None = None
     raw_payload: dict[str, Any] = field(default_factory=dict)
 
 

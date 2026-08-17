@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     # Application quality controls
     daily_application_limit: int = 10
     min_match_score: float = 0.65
+    min_fit_score_10: float = 7.0
+    min_relevance_score_10: float = 7.0
     min_resume_score: float = 0.70
     min_outreach_evidence_confidence: float = 0.60
     min_contact_confidence: float = 0.55
@@ -74,6 +76,19 @@ class Settings(BaseSettings):
     outreach_enabled: bool = True
     browser_automation_enabled: bool = True
     linkedin_easy_apply_fallback: bool = False
+    eea_search_enabled: bool = True
+    eea_posted_within_hours: int = 24
+    reslink_url: str | None = None
+
+    # Apify / prospecting (optional; sources degrade gracefully when unset)
+    apify_api_token: str | None = None
+    apify_linkedin_jobs_actor_id: str = "curious_coder/linkedin-jobs-scraper"
+    apify_linkedin_profile_actor_id: str = "apimaestro/linkedin-profile-detail"
+    apify_linkedin_employees_actor_id: str = "harvestapi/linkedin-company-employees"
+    vibe_prospecting_api_key: str | None = None
+    vibe_prospecting_base_url: str = "https://api.vibeprospecting.com"
+    google_jobs_cse_api_key: str | None = None
+    google_jobs_cse_cx: str | None = None
 
     # Scoring weights (must sum ~1.0)
     weight_technical: float = 0.30

@@ -31,6 +31,7 @@ class ContactType(StrEnum):
     RECRUITER = "RECRUITER"
     HIRING_MANAGER = "HIRING_MANAGER"
     TEAM_LEADER = "TEAM_LEADER"
+    PEER = "PEER"
     OTHER = "OTHER"
 
 
