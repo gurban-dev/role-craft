@@ -88,9 +88,11 @@ services:
       APP_ENV: production
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - celerybeat_data:/var/lib/celerybeat
     depends_on:
       - worker
-    command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO --schedule=/var/lib/celerybeat/celerybeat-schedule
 
   web:
     build:
@@ -110,3 +112,4 @@ volumes:
   postgres_data:
   redis_data:
   storage_data:
+  celerybeat_data:

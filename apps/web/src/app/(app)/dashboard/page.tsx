@@ -11,7 +11,7 @@ import { endpoints } from "@/lib/endpoints";
 import type { DashboardStats } from "@/lib/types";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "RoleCraft",
 };
 
 const emptyStats: DashboardStats = {

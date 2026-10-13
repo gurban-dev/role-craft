@@ -6,7 +6,7 @@ import { endpoints } from "@/lib/endpoints";
 import type { Settings } from "@/lib/types";
 
 export const metadata: Metadata = {
-  title: "Settings",
+  title: "RoleCraft",
 };
 
 const defaults: Settings = {

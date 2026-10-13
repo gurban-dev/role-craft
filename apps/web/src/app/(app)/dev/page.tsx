@@ -8,7 +8,7 @@ import type { HealthStatus, QueueInfo, ReadyStatus, Run, WorkerInfo } from "@/li
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Developer health",
+  title: "RoleCraft",
 };
 
 export default async function DevPage() {

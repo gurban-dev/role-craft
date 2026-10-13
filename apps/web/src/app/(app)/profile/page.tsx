@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import type { Profile } from "@/lib/types";
 
 export const metadata: Metadata = {
-  title: "Profile",
+  title: "RoleCraft",
 };
 
 export default async function ProfilePage() {

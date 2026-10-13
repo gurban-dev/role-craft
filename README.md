@@ -1,197 +1,202 @@
 # AI Job Application Automation Platform
 
-Production-ready full-stack system that discovers software engineering roles, ranks matches, tailors truthful resumes, researches companies/contacts, prepares outreach, and submits applications through modular Playwright workflows — with human approval by default.
+A full-stack platform that discovers software engineering roles, ranks matches, tailors truthful resumes, researches companies and contacts, prepares outreach, and submits applications through Playwright workflows with human approval by default.
 
-**Quality over volume.** Default daily target: 10 high-quality applications. The system never lowers the match threshold merely to reach 10.
-
-## Local URLs
-
-Copy and open these in your browser after the servers are running:
-
-| App | URL |
-|-----|-----|
-| Frontend (web) | http://localhost:3000 |
-| Backend server | http://localhost:8000 |
-| Backend API docs (OpenAPI) | http://localhost:8000/docs |
-| Backend API health | http://localhost:8000/api/health |
-| Backend API root prefix | http://localhost:8000/api |
+**Quality over volume:** Default daily target of 10 high-quality applications. Match thresholds are never lowered to reach the target.
 
 ## Architecture
 
+```text
+apps/
+├── web/       Next.js 16, React 19, Tailwind CSS 4
+└── api/       FastAPI, SQLAlchemy, Celery, Playwright
+
+packages/shared/   Shared constants
+infrastructure/    Docker and deployment configuration
 ```
-apps/web          Next.js 16 (App Router) + React 19 + Tailwind 4 + TanStack Query
-apps/api          FastAPI + SQLAlchemy 2 + Celery + Playwright
-packages/shared   Shared constants (optional)
-infrastructure/   Dockerfiles, migrations helpers, deployment notes
-```
 
-**Discovery → Decision → Execution** are separated. Browser automation never decides that a role is suitable.
+## Tech Stack
 
-## Stack (pinned)
-
-| Layer | Versions |
-|-------|----------|
-| Node / pnpm | 22+ / 10+ |
+| Component | Version |
+|---|---|
+| Node.js / pnpm | 22+ / 10+ |
 | Next.js / React | 16.3.0 / 19.2.x |
 | Python / uv | 3.12 / 0.12.x |
 | FastAPI / Pydantic / SQLAlchemy | 0.141.1 / 2.13.4 / 2.0.51 |
-| Celery / Redis / PostgreSQL | 5.6.3 / 7 / 16 |
+| PostgreSQL / Redis | 16 / 7 |
+| Celery | 5.6.3 |
 | Playwright | 1.62.0 |
-| LLM | OpenAI (configurable `LLMProvider`; only OpenAI implemented) |
 
 ## Prerequisites
 
-- Docker + Compose (recommended for full stack), **or** local PostgreSQL 16 + Redis 7
-- Node.js ≥ 20.9 (22 LTS recommended), pnpm
-- Python 3.12, uv
-- Playwright browser binaries (`uv run playwright install --with-deps chromium`)
+- Docker Desktop with Docker Compose, recommended.
+- Alternatively, Node.js, pnpm, Python 3.12, uv, PostgreSQL 16, and Redis 7.
+- An OpenAI API key for AI features.
 
-## Quick start (Docker)
+## Quick Start
+
+### Linux / macOS
+
+From the repository root:
 
 ```bash
 cp .env.example .env
-# Set SECRET_KEY, JWT_SECRET, and OPENAI_API_KEY (required for AI features)
+```
 
+Configure `SECRET_KEY`, `JWT_SECRET`, and `OPENAI_API_KEY` in `.env`, then run:
+
+```bash
+WEB_GID=$(id -g) docker compose up --build
+```
+
+### Windows PowerShell
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Configure the required secrets in `.env`, then run:
+
+```powershell
 docker compose up --build
 ```
 
-Services:
+The Windows command assumes `WEB_GID` is not required by your Compose configuration.
 
-| Service | URL |
-|---------|-----|
-| Web | http://localhost:3000 |
-| API / OpenAPI | http://localhost:8000/docs |
-| Postgres | localhost:5432 |
-| Redis | localhost:6379 |
+Open:
 
-Production compose: `docker compose -f docker-compose.prod.yml up --build -d`
+- Frontend: http://localhost:3000
+- API documentation: http://localhost:8000/docs
+- API health: http://localhost:8000/api/health
 
-## Local development (without Docker daemon)
+To start the production configuration:
 
 ```bash
-# Infra (examples using local binaries)
-redis-server --daemonize yes
-# PostgreSQL 16 listening on 127.0.0.1:5432 with user/db `jaa`
+docker compose -f docker-compose.prod.yml up --build -d
+```
 
-cp .env.example .env
-# Point DATABASE_URL / REDIS_URL at localhost (see .env.example)
+## Local Development
 
-# API
+Requires PostgreSQL 16 and Redis 7 running locally. Configure `DATABASE_URL` and `REDIS_URL` in `.env`.
+
+### 1. Start the API
+
+```bash
 cd apps/api
 uv sync
 uv run alembic upgrade head
+uv run playwright install chromium
 uv run uvicorn app.main:app --reload --port 8000
+```
 
-# Worker (separate terminal)
+### 2. Start the Celery worker
+
+In a separate terminal:
+
+```bash
+cd apps/api
 uv run celery -A app.workers.celery_app.celery_app worker --loglevel=INFO
+```
 
-# Optional beat scheduler
+On Windows, use:
+
+```powershell
+uv run celery -A app.workers.celery_app.celery_app worker --pool=solo --loglevel=INFO
+```
+
+### 3. Start the optional scheduler
+
+```bash
+cd apps/api
 uv run celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
+```
 
-# Playwright browsers
-uv run playwright install --with-deps chromium
+### 4. Start the frontend
 
-# Web
+In another terminal:
+
+```bash
 cd apps/web
 pnpm install
 pnpm dev
 ```
 
-## Environment variables
+On Windows, run the same commands in PowerShell.
 
-See [`.env.example`](.env.example). Critical:
+## Environment Configuration
 
-- `SECRET_KEY`, `JWT_SECRET` — session/crypto secrets
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `WEB_APP_URL` — optional Google sign-in
-- `DATABASE_URL`, `REDIS_URL`, `CELERY_*`
-- `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`
-- `AUTO_SUBMIT_ENABLED=false` (Approval Mode default)
-- `DAILY_APPLICATION_LIMIT=10`, `MIN_MATCH_SCORE`, `MIN_RESUME_SCORE`
+See `.env.example` for all supported variables.
 
-**Never commit real API keys.** If `OPENAI_API_KEY` is missing, AI operations fail clearly with a configuration error.
+Key settings:
 
-## Database migrations
+- `DATABASE_URL`, `REDIS_URL`: database and Redis connections.
+- `SECRET_KEY`, `JWT_SECRET`: security secrets.
+- `OPENAI_API_KEY`, `OPENAI_MODEL`, `LLM_PROVIDER`: AI configuration.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: optional Google sign-in.
+- `WEB_APP_URL`, `CORS_ORIGINS`: frontend URL and allowed origins.
+- `AUTO_SUBMIT_ENABLED=false`: human approval by default.
+- `DAILY_APPLICATION_LIMIT=10`, `MIN_MATCH_SCORE`, `MIN_RESUME_SCORE`: application limits and quality thresholds.
+
+**Never commit real secrets or API keys.**
+
+## Database Migrations
+
+Run from `apps/api`:
 
 ```bash
-cd apps/api
 uv run alembic upgrade head
-uv run alembic revision --autogenerate -m "description"   # when schema changes
 ```
 
-## Authentication
+Generate a migration after changing database models:
 
-HTTP-only JWT cookie (`jaa_session`) + CSRF cookie (`jaa_csrf`). Send `X-CSRF-Token` on mutating requests from the browser.
+```bash
+uv run alembic revision --autogenerate -m "description"
+```
 
-**Google sign-in:** set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` (must match the authorized redirect URI in Google Cloud Console — default `http://localhost:8000/api/auth/google/callback`). Also set `WEB_APP_URL` to your frontend origin. Users can continue with Google from login/register; matching emails link to existing password accounts.
-
-## Daily workflow
-
-1. Job discovery (Remotive, Arbeitnow, Greenhouse public boards)
-2. Dedup + deterministic scoring
-3. Quality threshold filter
-4. Resume tailor + validation + PDF (claims must exist in candidate profile)
-5. Company research (evidence required)
-6. Contact discovery (recruiter first; never both recruiter + hiring manager)
-7. Outreach generation (skipped if evidence weak)
-8. Application prep → **human Approve & Submit** (default)
-9. Playwright submit on official/ATS URL
-10. Record result; CAPTCHA/MFA → `NEEDS_HUMAN_ACTION` (no bypass)
-
-## Adding extensions
-
-### New job source
-
-Implement `JobSource` in `apps/api/app/integrations/job_sources/` and register in `registry.py`.
-
-### New ATS workflow
-
-Implement `ApplicationWorkflow` under `apps/api/app/automation/workflows/` and register in `registry.py`. Prefer role/label locators; never sleep as primary sync; pause on CAPTCHA/MFA.
-
-### New LLM provider
-
-Implement `LLMProvider` Protocol in `apps/api/app/integrations/llm/` and extend `factory.py`. Keep business logic provider-agnostic.
+Review generated migrations before applying them.
 
 ## Testing
 
+Backend:
+
 ```bash
-# API
 cd apps/api
 uv run ruff check app tests
 uv run mypy app
 uv run pytest -q
+```
 
-# Frontend
+Frontend:
+
+```bash
 cd apps/web
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
-# Automation fixtures (mock Greenhouse/Lever/CAPTCHA pages)
+Automation workflows:
+
+```bash
 cd apps/api
 uv run pytest tests/test_automation_workflows.py -q
 ```
 
-## Health
+## Extending the Platform
 
-- `GET /api/health` — liveness
-- `GET /api/ready` — Postgres + Redis readiness
+- **Job sources:** Implement `JobSource` in `apps/api/app/integrations/job_sources/` and register it in `registry.py`.
+- **ATS workflows:** Implement a workflow in `apps/api/app/automation/workflows/` and register it in `registry.py`.
+- **LLM providers:** Implement `LLMProvider` and extend the provider factory.
 
-## Security notes
+## Security
 
-- No CAPTCHA/MFA/bot-detection bypass
-- No fabricated CV claims, research, or contacts
-- Credentials encrypted at rest; secrets via environment only
-- Structured logs redact secrets; never log API keys or cookies
-- Conservative rate limits; idempotent application submits with DB constraints
-
-## Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| AI calls fail | Set `OPENAI_API_KEY` |
-| Playwright missing browsers | `uv run playwright install --with-deps chromium` |
-| Migrations fail | Check `DATABASE_URL` and Postgres connectivity |
-| Worker idle | Ensure Redis URL matches API; check `celery worker` logs |
-| CORS errors | Set `CORS_ORIGINS` to your web origin(s) |
+- Human approval is required by default.
+- No CAPTCHA or MFA bypasses.
+- Resume claims and research findings must be evidence-based.
+- Credentials are encrypted at rest.
+- Secrets and sensitive credentials must never appear in logs.
 
 ## License
 
-Proprietary — internal use.
+Proprietary. Internal use only.

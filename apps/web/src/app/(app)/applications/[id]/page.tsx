@@ -11,13 +11,8 @@ import { formatDate, formatPercent } from "@/lib/utils";
 
 type Params = Promise<{ id: string }>;
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Params;
-}): Promise<Metadata> {
-  const { id } = await params;
-  return { title: `Application ${id}` };
+export function generateMetadata(): Metadata {
+  return { title: "RoleCraft" };
 }
 
 export default async function ApplicationDetailPage({

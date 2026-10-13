@@ -32,7 +32,8 @@ RUN playwright install --with-deps chromium
 FROM deps AS runtime
 RUN useradd --create-home --uid 10001 appuser
 COPY apps/api /app
-RUN mkdir -p /app/storage && chown -R appuser:appuser /app
+RUN mkdir -p /app/storage /var/lib/celerybeat \
+    && chown -R appuser:appuser /app /var/lib/celerybeat
 USER appuser
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

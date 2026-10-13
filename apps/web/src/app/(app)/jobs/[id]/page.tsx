@@ -10,13 +10,8 @@ import { formatDate, formatPercent } from "@/lib/utils";
 
 type Params = Promise<{ id: string }>;
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Params;
-}): Promise<Metadata> {
-  const { id } = await params;
-  return { title: `Job ${id}` };
+export function generateMetadata(): Metadata {
+  return { title: "RoleCraft" };
 }
 
 function asMatch(raw: unknown): MatchAnalysis | null {

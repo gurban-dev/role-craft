@@ -102,7 +102,11 @@ export async function apiFetch<T>(
   options: FetchOptions = {},
 ): Promise<T> {
   const method = (options.method ?? (options.body !== undefined ? "POST" : "GET")).toUpperCase();
-  const url = path.startsWith("http") ? path : `${API_URL}${path}`;
+  const baseUrl =
+    typeof window === "undefined"
+      ? (process.env.API_INTERNAL_URL ?? API_URL)
+      : API_URL;
+  const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
   const headers = new Headers(options.headers);
 
   if (options.body !== undefined && !headers.has("Content-Type")) {

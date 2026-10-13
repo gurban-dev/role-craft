@@ -11,7 +11,7 @@ import type { Application } from "@/lib/types";
 import { formatDate, formatPercent } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Applications",
+  title: "RoleCraft",
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;

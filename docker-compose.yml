@@ -85,17 +85,21 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
       - ./apps/api:/app
+      - celerybeat_data:/var/lib/celerybeat
     depends_on:
       - redis
       - worker
-    command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO
+    command: celery -A app.workers.celery_app.celery_app beat --loglevel=INFO --schedule=/var/lib/celerybeat/celerybeat-schedule
 
   web:
     build:
       context: .
       dockerfile: infrastructure/docker/Dockerfile.web
+    # Match the host project files' group so Next.js can update tsconfig.json.
+    user: "10001:${WEB_GID:-1000}"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      API_INTERNAL_URL: http://api:8000
     ports:
       - "3000:3000"
     volumes:
@@ -110,3 +114,4 @@ volumes:
   postgres_data:
   redis_data:
   storage_data:
+  celerybeat_data:

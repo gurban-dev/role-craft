@@ -6,7 +6,7 @@ import type { Contact } from "@/lib/types";
 import { asList, endpoints } from "@/lib/endpoints";
 
 export const metadata: Metadata = {
-  title: "Contacts",
+  title: "RoleCraft",
 };
 
 export default async function ContactsPage() {

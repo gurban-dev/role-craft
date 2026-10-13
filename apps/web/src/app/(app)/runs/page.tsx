@@ -8,7 +8,7 @@ import type { Run } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Runs",
+  title: "RoleCraft",
 };
 
 export default async function RunsPage() {

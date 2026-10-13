@@ -6,7 +6,7 @@ import { asList, endpoints } from "@/lib/endpoints";
 import type { ResumeSummary } from "@/lib/types";
 
 export const metadata: Metadata = {
-  title: "Resumes",
+  title: "RoleCraft",
 };
 
 export default async function ResumesPage() {

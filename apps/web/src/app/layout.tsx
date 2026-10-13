@@ -25,8 +25,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "ApplyDesk",
-    template: "%s · ApplyDesk",
+    default: "RoleCraft",
+    template: "%s",
   },
   description: "Job application automation console",
 };

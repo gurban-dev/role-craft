@@ -7,7 +7,7 @@ import type { ResearchNote } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Research",
+  title: "RoleCraft",
 };
 
 export default async function ResearchPage() {
