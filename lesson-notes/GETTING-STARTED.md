@@ -1,3 +1,15 @@
+Create a virtual environment folder:
+
+python -m venv .venv
+
+Activate the virtual environment:
+
+PowerShell:
+
+.venv\Scripts\Activate.ps1
+
+wsl --install
+
 ## Start the Application with Docker
 
 Docker Compose builds the required container images and starts the services defined in `compose.yaml` or `docker-compose.yml`. The `--build` option tells Docker Compose to build the images before starting the services.
