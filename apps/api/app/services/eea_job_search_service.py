@@ -9,13 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.integrations.job_sources.base import DiscoveredJob, JobSearchCriteria
-from app.integrations.job_sources.registry import EEA_DISCOVERY_SOURCES, get_job_source
+from app.integrations.job_sources.registry import RESUME_MATCH_SOURCES, get_job_source
 from app.models import CandidateProfile, Job, User
 from app.models.enums import JobStatus
 from app.repositories.job_repository import JobRepository
 from app.repositories.user_repository import UserRepository
 from app.services.candidate_profile_extractor import CandidateProfileExtractor
-from app.services.eea_filters import classify_visa_sponsorship, detect_country_code, is_eea_location
+from app.services.eea_filters import (
+    classify_visa_sponsorship,
+    detect_country_code,
+    is_eea_location,
+    normalize_regions,
+)
 from app.services.eea_pipeline import (
     QualifiedJob,
     dedupe_discovered,
@@ -49,6 +54,7 @@ class EEAJobSearchService:
         query: str = "software engineer",
         limit: int = 10,
         sources: list[str] | None = None,
+        regions: list[str] | None = None,
     ) -> list[dict]:
         """Run phases 1–20 of the EEA workflow; return top qualifying rows (≤10)."""
         from app.services.rate_limit import RateLimitService
@@ -60,15 +66,18 @@ class EEAJobSearchService:
         await self.ensure_structured_profile(profile, str(user.id))
 
         hours = self.settings.eea_posted_within_hours
+        skills = [str(s) for s in (profile.skills or []) if s][:8]
+        selected_regions = normalize_regions(regions)
         criteria = JobSearchCriteria(
             query=query,
             location=None,
             remote_only=False,
             limit=max(limit * 5, 40),
             posted_within_hours=hours,
-            eea_only=True,
+            eea_only=False,
+            extras={"regions": selected_regions, "profile_skills": skills},
         )
-        source_names = sources or EEA_DISCOVERY_SOURCES
+        source_names = sources or RESUME_MATCH_SOURCES
         discovered: list[DiscoveredJob] = []
         for name in source_names:
             try:
@@ -84,7 +93,9 @@ class EEAJobSearchService:
         qualified: list[QualifiedJob] = []
 
         for item in discovered:
-            ok, evidence, meta = validate_hard_requirements(item, now=now, hours=hours)
+            ok, evidence, meta = validate_hard_requirements(
+                item, now=now, hours=hours, regions=selected_regions
+            )
             if not ok:
                 logger.debug(
                     "eea_job_rejected",
@@ -99,7 +110,7 @@ class EEAJobSearchService:
             match = await self.job_service._upsert_match(job, profile)
             await self.job_service._ensure_application(user, job, profile, match)
 
-            if (job.fit_score_10 or 0) < min_fit:
+            if (job.fit_score_10 or 0) <= min_fit:
                 continue
             qualified.append(
                 QualifiedJob(
@@ -125,7 +136,7 @@ class EEAJobSearchService:
                     "role": q.job.title,
                     "company": q.job.company,
                     "posted": posted,
-                    "source": q.job.source,
+                    "source": _source_label(q.job.source),
                     "fit_score": q.fit_score_10,
                     "apply_link": apply,
                     "location": q.job.location,
@@ -195,3 +206,12 @@ class EEAJobSearchService:
         self.db.add(job)
         await self.db.flush()
         return job
+
+
+def _source_label(source: str) -> str:
+    key = (source or "").lower()
+    if "linkedin" in key:
+        return "LinkedIn"
+    if key in {"chatgpt_google", "google_jobs"} or "google" in key:
+        return "Google"
+    return source or ""

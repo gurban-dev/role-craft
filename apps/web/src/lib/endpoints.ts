@@ -17,8 +17,25 @@ import type {
   WorkerInfo,
 } from "./types";
 
+export type RecentJobMatch = {
+  rank: number;
+  role: string;
+  company: string;
+  posted: string;
+  source: string;
+  fit_score: number;
+  apply_link: string;
+};
+
 export const endpoints = {
   dashboardStats: () => apiGet<DashboardStats>("/api/dashboard/stats"),
+  recentJobMatches: (regions: string[]) =>
+    apiPost<RecentJobMatch[]>("/api/jobs/eea-search", {
+      query: "software engineer",
+      limit: 10,
+      sources: ["chatgpt_google", "linkedin_apify"],
+      regions,
+    }),
   jobs: (query = "") =>
     apiGet<Paginated<Job> | Job[]>(`/api/jobs${query ? `?${query}` : ""}`),
   job: (id: string) => apiGet<Job & { match?: unknown }>(`/api/jobs/${id}`),

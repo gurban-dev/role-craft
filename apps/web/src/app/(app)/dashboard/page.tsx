@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { RecentMatchSearch } from "@/components/dashboard/RecentMatchSearch";
 import {
   DailyTargetWidget,
   HumanActionQueueWidget,
@@ -51,6 +52,7 @@ export default async function DashboardPage() {
         title="Dashboard"
         description="Daily throughput, pipeline health, and items waiting on you."
       />
+      <RecentMatchSearch />
       {error ? <ErrorState title="Dashboard unavailable" message={error} /> : null}
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <DailyTargetWidget stats={stats} />

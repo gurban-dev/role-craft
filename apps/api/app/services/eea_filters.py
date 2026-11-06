@@ -91,12 +91,185 @@ VISA_BLOCK_PATTERNS = [
     r"no(\s+visa)?\s+sponsorship",
     r"cannot sponsor",
     r"unable to sponsor",
+    r"unable to provide (a )?(work permit|visa|sponsorship)",
+    r"cannot provide (a )?(work permit|visa|sponsorship)",
+    r"not able to (sponsor|provide (a )?(work permit|visa))",
     r"will not sponsor",
     r"does not (provide|offer|support) (visa|work permit|sponsorship)",
     r"no work (permit|visa) (support|sponsorship)",
+    r"sponsorship is not available",
     r"only candidates (who are )?authorized to work",
     r"must have (the )?right to work",
 ]
+
+# Languages other than English. A required second language fails the "English only" rule.
+_OTHER_LANGS = (
+    "dutch|german|french|spanish|italian|swedish|norwegian|danish|finnish|"
+    "polish|portuguese|czech|hungarian|romanian|greek|mandarin|chinese|"
+    "japanese|korean|arabic|turkish|ukrainian|russian"
+)
+ADDITIONAL_LANGUAGE_PATTERNS = [
+    rf"\b(fluent|native|proficient|advanced)\s+(in\s+)?({_OTHER_LANGS})\b",
+    rf"\b({_OTHER_LANGS})\b\s+(language\s+)?(required|mandatory|is required|is a must|essential)\b",
+    rf"\bmust\s+(also\s+)?(speak|write|be fluent in)\s+({_OTHER_LANGS})\b",
+    rf"\bworking language[:\s]+({_OTHER_LANGS})\b",
+]
+
+EUROPE_EXTRA: dict[str, str] = {
+    "united kingdom": "gb",
+    "great britain": "gb",
+    "england": "gb",
+    "scotland": "gb",
+    "wales": "gb",
+    "london": "gb",
+    "switzerland": "ch",
+    "zurich": "ch",
+    "geneva": "ch",
+    "europe": "eu",
+    "european union": "eu",
+}
+
+JOB_REGIONS: tuple[str, ...] = (
+    "Europe",
+    "North America",
+    "South America",
+    "Asia",
+    "Africa",
+    "Australia",
+)
+
+_REGION_MARKERS: dict[str, tuple[str, ...]] = {
+    "North America": (
+        "north america",
+        "united states",
+        "usa",
+        "u.s.a",
+        "u.s.",
+        "canada",
+        "mexico",
+        "toronto",
+        "montreal",
+        "vancouver",
+        "ottawa",
+        "mexico city",
+        "san francisco",
+        "new york",
+        "seattle",
+        "austin",
+        "boston",
+        "chicago",
+        "los angeles",
+        "denver",
+        "atlanta",
+        "miami",
+        "dallas",
+        "houston",
+        "washington, dc",
+        "washington dc",
+    ),
+    "South America": (
+        "south america",
+        "brazil",
+        "brasil",
+        "argentina",
+        "chile",
+        "colombia",
+        "peru",
+        "uruguay",
+        "ecuador",
+        "bolivia",
+        "paraguay",
+        "venezuela",
+        "sao paulo",
+        "são paulo",
+        "buenos aires",
+        "santiago",
+        "lima",
+        "bogota",
+        "bogotá",
+    ),
+    "Asia": (
+        "asia",
+        "india",
+        "singapore",
+        "japan",
+        "china",
+        "south korea",
+        "korea",
+        "hong kong",
+        "taiwan",
+        "vietnam",
+        "indonesia",
+        "thailand",
+        "malaysia",
+        "philippines",
+        "pakistan",
+        "bangladesh",
+        "sri lanka",
+        "israel",
+        "united arab emirates",
+        "uae",
+        "dubai",
+        "qatar",
+        "saudi arabia",
+        "tokyo",
+        "seoul",
+        "bangalore",
+        "bengaluru",
+        "mumbai",
+        "hyderabad",
+        "delhi",
+        "pune",
+        "jakarta",
+        "bangkok",
+        "kuala lumpur",
+        "manila",
+        "tel aviv",
+        "beijing",
+        "shanghai",
+        "shenzhen",
+        "osaka",
+    ),
+    "Africa": (
+        "africa",
+        "south africa",
+        "nigeria",
+        "kenya",
+        "egypt",
+        "ghana",
+        "morocco",
+        "tunisia",
+        "rwanda",
+        "ethiopia",
+        "uganda",
+        "tanzania",
+        "cape town",
+        "johannesburg",
+        "lagos",
+        "nairobi",
+        "cairo",
+        "accra",
+    ),
+    "Australia": (
+        "australia",
+        "australian",
+        "sydney",
+        "melbourne",
+        "brisbane",
+        "perth",
+        "adelaide",
+        "canberra",
+    ),
+}
+
+AGGREGATOR_HOSTS = (
+    "linkedin.com",
+    "indeed.com",
+    "glassdoor.",
+    "ziprecruiter.",
+    "google.com",
+    "monster.com",
+)
 
 ENGLISH_POSITIVE = [
     r"\benglish\b",
@@ -127,6 +300,59 @@ def detect_country_code(location: str | None, description: str = "") -> str | No
 def is_eea_location(location: str | None, description: str = "") -> bool:
     code = detect_country_code(location, description)
     return code is not None and code in EEA_COUNTRIES
+
+
+def is_europe_location(location: str | None, description: str = "") -> bool:
+    if is_eea_location(location, description):
+        return True
+    blob = normalize_location_blob(location, description[:2000])
+    if not blob:
+        return False
+    for name in sorted(EUROPE_EXTRA, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(name)}\b", blob):
+            return True
+    if re.search(r"\buk\b", blob) and "ukraine" not in blob:
+        return True
+    return False
+
+
+def normalize_regions(regions: list[str] | None) -> list[str]:
+    """Keep known regions in display order. Default to Europe when none are chosen."""
+    chosen = {str(region) for region in (regions or [])}
+    ordered = [region for region in JOB_REGIONS if region in chosen]
+    return ordered or ["Europe"]
+
+
+def match_region(*parts: str | None, regions: list[str] | None = None) -> str | None:
+    """Return the first selected region named by the posting."""
+    blob = normalize_location_blob(*parts)
+    if not blob:
+        return None
+    for region in normalize_regions(regions):
+        if region == "Europe":
+            if is_europe_location(blob):
+                return region
+            continue
+        for marker in _REGION_MARKERS.get(region, ()):
+            if re.search(rf"\b{re.escape(marker)}\b", blob):
+                return region
+    return None
+
+
+def requires_non_english(description: str, title: str = "") -> bool:
+    blob = f"{title}\n{description}".lower()
+    return any(re.search(p, blob) for p in ADDITIONAL_LANGUAGE_PATTERNS)
+
+
+def company_website_apply_url(*urls: str | None) -> str | None:
+    for url in urls:
+        if not url or not str(url).lower().startswith("http"):
+            continue
+        lower = str(url).lower()
+        if any(host in lower for host in AGGREGATOR_HOSTS):
+            continue
+        return str(url)
+    return None
 
 
 def title_looks_senior(title: str, description: str = "") -> bool:
@@ -177,12 +403,10 @@ def posted_within_hours(posted_at: datetime | None, hours: int = 24, *, now: dat
 
 
 def applicant_count_ok(count: int | None, *, linkedin_source: bool) -> bool:
-    """LinkedIn: hard require count < 100. Non-LinkedIn: allow missing."""
-    if linkedin_source:
-        if count is None:
-            return False
-        return count < 100
-    return True
+    """Require fewer than 100 applicants. LinkedIn must publish the count."""
+    if count is None:
+        return not linkedin_source
+    return count < 100
 
 
 def classify_visa_sponsorship(description: str) -> str:

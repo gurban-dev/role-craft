@@ -10,10 +10,12 @@ from app.integrations.job_sources.base import DiscoveredJob
 from app.services.eea_filters import (
     applicant_count_ok,
     classify_visa_sponsorship,
+    company_website_apply_url,
     detect_country_code,
     english_required_or_implied,
-    is_eea_location,
+    match_region,
     posted_within_hours,
+    requires_non_english,
     title_looks_preferred_engineering,
     title_looks_senior,
 )
@@ -51,6 +53,7 @@ def validate_hard_requirements(
     *,
     now: datetime | None = None,
     hours: int = 24,
+    regions: list[str] | None = None,
 ) -> tuple[bool, FilterEvidence, dict[str, Any]]:
     """Return (ok, evidence, enriched metadata). Never invent missing hard facts."""
     now = now or datetime.now(UTC)
@@ -63,23 +66,23 @@ def validate_hard_requirements(
 
     country = item.country_code or detect_country_code(item.location, item.description)
     meta["country_code"] = country
-    if not is_eea_location(item.location, item.description) and not (
-        country and country in {
-            "at", "be", "bg", "hr", "cy", "cz", "dk", "ee", "fi", "fr", "de", "gr",
-            "hu", "is", "ie", "it", "lv", "li", "lt", "lu", "mt", "nl", "no", "pl",
-            "pt", "ro", "sk", "si", "es", "se",
-        }
-    ):
-        evidence.reasons_rejected.append("not_eea_location")
-        evidence.location = f"rejected:{item.location}"
+    market_parts = (item.location, item.remote_status, item.title, item.description[:1500])
+    region = match_region(*market_parts, regions=regions)
+    if region:
+        evidence.location = f"{region}:{country}:{item.location}"
+        meta["market"] = region
     else:
-        evidence.location = f"eea:{country}:{item.location}"
+        evidence.reasons_rejected.append("location_not_in_scope")
+        evidence.location = f"rejected:{item.location}"
+        meta["market"] = None
 
-    if not english_required_or_implied(item.description, item.title):
+    if requires_non_english(item.description, item.title) or not english_required_or_implied(
+        item.description, item.title
+    ):
         evidence.reasons_rejected.append("english_not_ok")
         evidence.english = "rejected"
     else:
-        evidence.english = "ok_or_implied"
+        evidence.english = "english_only"
 
     if title_looks_senior(item.title, item.description):
         evidence.reasons_rejected.append("seniority_too_high")
@@ -119,9 +122,11 @@ def validate_hard_requirements(
             str(item.applicant_count) if item.applicant_count is not None else "n/a_non_linkedin"
         )
 
-    apply_url = item.official_application_url or item.source_url
+    apply_url = company_website_apply_url(item.official_application_url, item.source_url)
     if not apply_url:
-        evidence.reasons_rejected.append("no_application_path")
+        evidence.reasons_rejected.append("no_company_website_apply_link")
+    else:
+        item.official_application_url = apply_url
 
     ok = len(evidence.reasons_rejected) == 0
     return ok, evidence, meta

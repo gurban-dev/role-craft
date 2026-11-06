@@ -46,9 +46,13 @@ async def search_jobs(
 async def eea_search(
     data: EEAJobSearchRequest, user: CurrentUser, db: DbSession
 ) -> list[EEAJobRow]:
-    """EEA software-engineering discovery with hard filters; max 10 rows, fit >= 7."""
+    """Regional discovery. ChatGPT searches Google, then Apify scrapes LinkedIn."""
     rows = await EEAJobSearchService(db).discover_and_rank(
-        user, query=data.query, limit=data.limit, sources=data.sources
+        user,
+        query=data.query,
+        limit=data.limit,
+        sources=data.sources,
+        regions=list(data.regions),
     )
     return [EEAJobRow.model_validate(r) for r in rows]
 

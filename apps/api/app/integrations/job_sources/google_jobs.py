@@ -36,7 +36,11 @@ class GoogleJobsSource:
             return []
 
         hours = criteria.posted_within_hours or settings.eea_posted_within_hours
-        location_hint = criteria.location or "EEA OR Netherlands OR Germany OR Ireland OR France"
+        selected = criteria.extras.get("regions")
+        if isinstance(selected, list) and selected:
+            location_hint = " OR ".join(str(region) for region in selected)
+        else:
+            location_hint = criteria.location or "Europe"
         query = (
             f'{criteria.query} ({location_hint}) '
             f'(software engineer OR developer) after:{_date_restrict(hours)}'

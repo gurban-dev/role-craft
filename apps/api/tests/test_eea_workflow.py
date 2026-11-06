@@ -5,17 +5,31 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from app.integrations.job_sources.apify_linkedin import linkedin_search_urls
 from app.integrations.job_sources.base import DiscoveredJob
 from app.models import CandidateProfile, Job
 from app.services.eea_filters import (
     applicant_count_ok,
     is_eea_location,
+    is_europe_location,
     posted_within_hours,
     title_looks_senior,
     visa_sponsorship_blocked,
 )
 from app.services.eea_pipeline import dedupe_discovered, validate_hard_requirements
 from app.services.scoring_service import ScoringService
+
+
+def test_linkedin_search_urls_follow_selected_regions() -> None:
+    urls = linkedin_search_urls(
+        "software engineer",
+        ["Asia", "Australia"],
+    )
+    assert len(urls) == 2
+    assert any("location=Asia" in url and "f_TPR=r86400" in url for url in urls)
+    assert any("location=Australia" in url and "f_TPR=r86400" in url for url in urls)
+    assert all("f_WT" not in url for url in urls)
+    assert all("linkedin.com/jobs/search" in url for url in urls)
 
 
 def test_eea_location_accepts_amsterdam() -> None:
@@ -39,8 +53,18 @@ def test_seniority_excludes_senior_titles() -> None:
 def test_visa_block_patterns() -> None:
     assert visa_sponsorship_blocked("We cannot sponsor visas for this role.")
     assert visa_sponsorship_blocked("Candidates must already have work authorization.")
+    assert visa_sponsorship_blocked(
+        "The company is unable to provide a work permit for the Netherlands."
+    )
     assert not visa_sponsorship_blocked("We offer relocation support and visa sponsorship.")
     assert not visa_sponsorship_blocked("Join our Amsterdam engineering team.")
+
+
+def test_europe_includes_uk_and_eea_stays_narrow() -> None:
+    assert is_europe_location("London, United Kingdom")
+    assert is_europe_location("Zurich, Switzerland")
+    assert not is_eea_location("London, United Kingdom")
+    assert not is_europe_location("San Francisco, USA")
 
 
 def test_applicant_count_linkedin_hard() -> None:
@@ -48,6 +72,8 @@ def test_applicant_count_linkedin_hard() -> None:
     assert not applicant_count_ok(100, linkedin_source=True)
     assert not applicant_count_ok(None, linkedin_source=True)
     assert applicant_count_ok(None, linkedin_source=False)
+    assert not applicant_count_ok(100, linkedin_source=False)
+    assert applicant_count_ok(12, linkedin_source=False)
 
 
 def test_recency_requires_timestamp() -> None:
@@ -74,6 +100,111 @@ def test_validate_hard_requirements_happy_path() -> None:
     ok, evidence, meta = validate_hard_requirements(job, now=now, hours=24)
     assert ok, evidence.reasons_rejected
     assert meta["country_code"] == "nl"
+
+
+def test_validate_accepts_london_and_us_remote() -> None:
+    now = datetime.now(UTC)
+    london = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="uk-1",
+        source="chatgpt_google",
+        description="English is the working language. Python and React.",
+        location="London, United Kingdom",
+        source_url="https://careers.acme.example/jobs/uk-1",
+        official_application_url="https://careers.acme.example/jobs/uk-1",
+        posted_at=now - timedelta(hours=4),
+    )
+    ok, evidence, meta = validate_hard_requirements(
+        london, now=now, hours=24, regions=["Europe"]
+    )
+    assert ok, evidence.reasons_rejected
+    assert meta["market"] == "Europe"
+
+    us_remote = DiscoveredJob(
+        title="Software Engineer",
+        company="Northwind",
+        external_job_id="us-1",
+        source="linkedin_apify",
+        description="Fully remote. English only. TypeScript.",
+        location="United States",
+        remote_status="remote",
+        source_url="https://www.linkedin.com/jobs/view/us-1",
+        official_application_url="https://jobs.lever.co/northwind/us-1",
+        posted_at=now - timedelta(hours=1),
+        applicant_count=40,
+    )
+    ok, evidence, meta = validate_hard_requirements(
+        us_remote, now=now, hours=24, regions=["North America"]
+    )
+    assert ok, evidence.reasons_rejected
+    assert meta["market"] == "North America"
+
+
+def test_validate_rejects_us_onsite_extra_language_and_aggregator_link() -> None:
+    now = datetime.now(UTC)
+    onsite = DiscoveredJob(
+        title="Software Engineer",
+        company="Office",
+        external_job_id="us-2",
+        source="chatgpt_google",
+        description="On-site in San Francisco. English.",
+        location="San Francisco, USA",
+        source_url="https://careers.office.example/jobs/2",
+        official_application_url="https://careers.office.example/jobs/2",
+        posted_at=now - timedelta(hours=1),
+    )
+    ok, evidence, _ = validate_hard_requirements(onsite, now=now, hours=24, regions=["Europe"])
+    assert not ok
+    assert "location_not_in_scope" in evidence.reasons_rejected
+
+    singapore = DiscoveredJob(
+        title="Software Engineer",
+        company="Harbor",
+        external_job_id="sg-1",
+        source="chatgpt_google",
+        description="English only. On-site in Singapore.",
+        location="Singapore",
+        source_url="https://careers.harbor.example/jobs/sg-1",
+        official_application_url="https://careers.harbor.example/jobs/sg-1",
+        posted_at=now - timedelta(hours=2),
+    )
+    ok, evidence, meta = validate_hard_requirements(
+        singapore, now=now, hours=24, regions=["Asia"]
+    )
+    assert ok, evidence.reasons_rejected
+    assert meta["market"] == "Asia"
+
+    dutch = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="nl-2",
+        source="arbeitnow",
+        description="English required. Dutch language required.",
+        location="Amsterdam, Netherlands",
+        source_url="https://careers.acme.example/jobs/nl-2",
+        official_application_url="https://careers.acme.example/jobs/nl-2",
+        posted_at=now - timedelta(hours=1),
+    )
+    ok, evidence, _ = validate_hard_requirements(dutch, now=now, hours=24)
+    assert not ok
+    assert "english_not_ok" in evidence.reasons_rejected
+
+    linkedin_only = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="li-only",
+        source="linkedin_apify",
+        description="English. Python.",
+        location="Berlin, Germany",
+        source_url="https://www.linkedin.com/jobs/view/li-only",
+        official_application_url="https://www.linkedin.com/jobs/view/li-only",
+        posted_at=now - timedelta(hours=1),
+        applicant_count=10,
+    )
+    ok, evidence, _ = validate_hard_requirements(linkedin_only, now=now, hours=24)
+    assert not ok
+    assert "no_company_website_apply_link" in evidence.reasons_rejected
 
 
 def test_validate_rejects_linkedin_without_applicants() -> None:

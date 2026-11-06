@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -142,10 +142,21 @@ class JobOut(ORMModel):
     status: str
 
 
+JobRegion = Literal[
+    "Europe",
+    "North America",
+    "South America",
+    "Asia",
+    "Africa",
+    "Australia",
+]
+
+
 class EEAJobSearchRequest(BaseModel):
     query: str = "software engineer"
     limit: int = Field(default=10, ge=1, le=10)
     sources: list[str] | None = None
+    regions: list[JobRegion] = Field(default_factory=lambda: ["Europe"], min_length=1, max_length=6)
 
 
 class EEAJobRow(BaseModel):

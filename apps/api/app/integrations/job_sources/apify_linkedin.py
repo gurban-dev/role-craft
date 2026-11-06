@@ -4,17 +4,31 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import quote_plus
 
 import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.integrations.job_sources.base import DiscoveredJob, JobSearchCriteria
-from app.services.eea_filters import detect_country_code
+from app.services.eea_filters import detect_country_code, normalize_regions
 
 logger = get_logger(__name__)
 
 APIFY_RUN_SYNC = "https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items"
+
+# curious_coder/linkedin-jobs-scraper ignores free-text filters when `urls` is set.
+# f_TPR=r86400 is LinkedIn's "past 24 hours".
+
+
+def linkedin_search_urls(query: str, regions: list[str] | None = None) -> list[str]:
+    """One past-24-hours search per selected region, in person or remote."""
+    keywords = quote_plus(query or "software engineer")
+    return [
+        "https://www.linkedin.com/jobs/search/"
+        f"?keywords={keywords}&location={quote_plus(region)}&f_TPR=r86400&sortBy=DD"
+        for region in normalize_regions(regions)
+    ]
 
 
 def _parse_posted_at(raw: Any) -> datetime | None:
@@ -74,35 +88,15 @@ class ApifyLinkedInJobsSource:
             logger.info("apify_linkedin_skipped", reason="APIFY_API_TOKEN unset")
             return []
 
-        locations = []
-        if criteria.location:
-            locations.append(criteria.location)
-        elif criteria.eea_only:
-            locations = [
-                "Netherlands",
-                "Germany",
-                "Ireland",
-                "France",
-                "Belgium",
-                "Spain",
-                "Portugal",
-                "Poland",
-                "Sweden",
-                "Denmark",
-            ]
-        else:
-            locations = ["European Union"]
-
         actor_input: dict[str, Any] = {
-            "queries": [criteria.query],
-            "locations": locations,
-            "maxResults": min(criteria.limit * 3, 100),
-            "postedWithinHours": criteria.posted_within_hours
-            or settings.eea_posted_within_hours,
+            "urls": linkedin_search_urls(criteria.query, criteria.extras.get("regions")),
+            "limitPerSource": min(max(criteria.limit, 10), 20),
+            "scrapeCompany": False,
         }
         actor_input.update(criteria.extras.get("apify_input") or {})
 
-        url = APIFY_RUN_SYNC.format(actor_id=settings.apify_linkedin_jobs_actor_id)
+        actor_id = settings.apify_linkedin_jobs_actor_id.replace("/", "~")
+        url = APIFY_RUN_SYNC.format(actor_id=actor_id)
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
@@ -131,7 +125,7 @@ class ApifyLinkedInJobsSource:
                 continue
             title = item.get("title") or item.get("jobTitle") or ""
             company = item.get("companyName") or item.get("company") or "Unknown"
-            job_url = item.get("jobUrl") or item.get("url") or item.get("link")
+            job_url = item.get("jobUrl") or item.get("url") or item.get("link") or item.get("jobLink")
             job_id = str(
                 item.get("jobId")
                 or item.get("id")
@@ -140,7 +134,12 @@ class ApifyLinkedInJobsSource:
                 or f"{company}-{title}"
             )
             location = item.get("location") or item.get("jobLocation")
-            description = item.get("description") or item.get("jobDescription") or ""
+            description = (
+                item.get("description")
+                or item.get("descriptionText")
+                or item.get("jobDescription")
+                or ""
+            )
             posted_at = _parse_posted_at(
                 item.get("postedAt")
                 or item.get("publishedAt")
@@ -153,6 +152,7 @@ class ApifyLinkedInJobsSource:
                 or item.get("applicantCount")
                 or item.get("numApplicants")
                 or item.get("applicationsCount")
+                or item.get("applicantsCount")
             )
             jobs.append(
                 DiscoveredJob(
@@ -164,7 +164,10 @@ class ApifyLinkedInJobsSource:
                     location=location,
                     remote_status=item.get("workplaceType") or item.get("remoteStatus"),
                     source_url=job_url,
-                    official_application_url=item.get("applyUrl") or job_url,
+                    official_application_url=item.get("applyUrl")
+                    or item.get("applyLink")
+                    or item.get("companyApplyUrl")
+                    or job_url,
                     posted_at=posted_at,
                     applicant_count=applicants,
                     country_code=detect_country_code(location, description),
