@@ -8,14 +8,14 @@ When a user clicks **Find matching jobs**, the application follows this flow:
 
 The dashboard collects the user's search settings.
 
-- **Regions:** Europe is the default.
+- **Regions:** Europe, North America, South America, Asia, and Africa are selected by default. The user can uncheck regions.
 - **Date window:** The past 24 hours is the default.
 - The selected date window and regions are included in the API request.
 - The button changes to **Searching...** while the request is being processed.
 
 **Relevant files:**
-- [Dashboard component](apps/web/src/components/dashboard/RecentMatchSearch.tsx#L68)
-- [API request payload](apps/web/src/lib/endpoints.ts#L34)
+- [Dashboard component](../apps/web/src/components/dashboard/RecentMatchSearch.tsx#L68)
+- [API request payload](../apps/web/src/lib/endpoints.ts#L34)
 
 ## 2. Authenticate the User and Start Job Discovery
 
@@ -28,28 +28,24 @@ The `POST /api/jobs/eea-search` endpoint:
 If the user does not have a candidate profile, the service returns an empty list.
 
 **Relevant files:**
-- [API route](apps/api/app/api/jobs.py#L51)
-- [Search service](apps/api/app/services/eea_job_search_service.py#L51)
+- [API route](../apps/api/app/api/jobs.py#L51)
+- [Search service](../apps/api/app/services/eea_job_search_service.py#L51)
 
 ## 3. Search the Selected Job Sources
 
-The dashboard currently requests results from two sources:
-
-- ChatGPT Google Search.
-- Apify's LinkedIn scraper.
+The dashboard requests results only from LinkedIn through the Apify LinkedIn scraper. Google and other job-source integrations are not used by this dashboard search.
 
 The search criteria include:
 
 - The selected date window.
 - The selected regions.
-- Up to eight skills from the candidate profile.
+- Up to eight skills from the candidate profile for scoring, with the top three added to LinkedIn's search keywords.
 
 If a source encounters an error, the service logs it and continues searching the remaining sources.
 
 **Relevant files:**
-- [Source selection and search](apps/api/app/services/eea_job_search_service.py#L70)
-- [Google Search integration](apps/api/app/integrations/job_sources/chatgpt_google.py#L26)
-- [LinkedIn integration](apps/api/app/integrations/job_sources/apify_linkedin.py#L112)
+- [Source selection and search](../apps/api/app/services/eea_job_search_service.py#L70)
+- [LinkedIn integration](../apps/api/app/integrations/job_sources/apify_linkedin.py#L112)
 
 ## 4. Deduplicate Results and Apply Hard Filters
 
@@ -68,8 +64,8 @@ A job must satisfy **all** of the following conditions:
 **Important:** A job only needs to match one of the selected regions, not all of them.
 
 **Relevant files:**
-- [Hard filters](apps/api/app/services/eea_pipeline.py#L51)
-- [Date and applicant checks](apps/api/app/services/eea_filters.py#L396)
+- [Hard filters](../apps/api/app/services/eea_pipeline.py#L51)
+- [Date and applicant checks](../apps/api/app/services/eea_filters.py#L396)
 
 ## 5. Score Remaining Jobs Against the Candidate Profile
 
@@ -85,15 +81,15 @@ The scorer evaluates:
 - Domain.
 - Preferences.
 
-A job must score above the configured minimum, currently **7/10**, to appear in the search results.
+A job must score at least **8/10** to appear in the search results. This threshold is configurable with `MIN_FIT_SCORE_10`.
 
 **Important:** Jobs that pass the hard requirements are persisted before the scoring cutoff is applied.
 
 Consequently, the pipeline's **Discovered** count can be higher than the number of jobs displayed in the search results.
 
 **Relevant files:**
-- [Scoring logic](apps/api/app/services/scoring_service.py#L122)
-- [Score cutoff and persistence order](apps/api/app/services/eea_job_search_service.py#L98)
+- [Scoring logic](../apps/api/app/services/scoring_service.py#L122)
+- [Score cutoff and persistence order](../apps/api/app/services/eea_job_search_service.py#L98)
 
 ## 6. Return and Display the Top 10 Matches
 
@@ -117,8 +113,8 @@ If no jobs pass the requirements, the dashboard displays:
 The API logs also include counts by rejection reason, helping identify why a search returned no results.
 
 **Relevant files:**
-- [Result construction and logging](apps/api/app/services/eea_job_search_service.py#L127)
-- [Dashboard results table](apps/web/src/components/dashboard/RecentMatchSearch.tsx#L178)
+- [Result construction and logging](../apps/api/app/services/eea_job_search_service.py#L127)
+- [Dashboard results table](../apps/web/src/components/dashboard/RecentMatchSearch.tsx#L178)
 
 ---
 
