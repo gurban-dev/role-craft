@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { DataTable, type Column } from "@/components/DataTable";
 import { EmptyState, ErrorState, PageHeader } from "@/components/ui";
-import { ApiError } from "@/lib/api";
+import { API_URL, ApiError } from "@/lib/api";
 import { asList, endpoints } from "@/lib/endpoints";
 import type { ResumeSummary } from "@/lib/types";
+import { ResumeUpload } from "@/components/resumes/ResumeUpload";
 
 export const metadata: Metadata = {
   title: "RoleCraft",
@@ -17,12 +18,15 @@ export default async function ResumesPage() {
     const raw = asList(await endpoints.resumes());
     resumes = raw.map((r) => ({
       id: r.id,
-      name: (r as ResumeSummary & { kind?: string }).name
-        ?? (r as { kind?: string }).kind
+      name: r.original_filename
+        ?? r.name
+        ?? r.kind
         ?? "Resume",
-      version: (r as { version?: string | number | null }).version?.toString() ?? null,
-      tailored: (r as { kind?: string }).kind === "TAILORED",
-      file_url: (r as { file_path?: string | null }).file_path ?? null,
+      version: r.version?.toString() ?? null,
+      tailored: r.kind === "TAILORED",
+      file_url: r.original_filename
+        ? `${API_URL}/api/resumes/${r.id}/download`
+        : r.file_path ?? r.file_url ?? null,
     }));
   } catch (err) {
     error =
@@ -66,11 +70,12 @@ export default async function ResumesPage() {
         title="Resumes"
         description="Base and tailored resume variants used by the pipeline."
       />
+      <ResumeUpload />
       {error ? <ErrorState title="Could not load resumes" message={error} /> : null}
       {resumes.length === 0 && !error ? (
         <EmptyState
           title="No resumes"
-          description="Upload or generate resumes from settings / prepare flows."
+          description="Upload a resume above, or generate a tailored resume from an application."
         />
       ) : (
         <DataTable columns={columns} rows={resumes} rowKey={(r) => r.id} />

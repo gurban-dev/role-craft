@@ -23,11 +23,11 @@ from app.services.scoring_service import ScoringService
 def test_linkedin_search_urls_follow_selected_regions() -> None:
     urls = linkedin_search_urls(
         "software engineer",
-        ["Asia", "Australia"],
+        ["Asia", "Africa"],
     )
     assert len(urls) == 2
     assert any("location=Asia" in url and "f_TPR=r86400" in url for url in urls)
-    assert any("location=Australia" in url and "f_TPR=r86400" in url for url in urls)
+    assert any("location=Africa" in url and "f_TPR=r86400" in url for url in urls)
     assert all("f_WT" not in url for url in urls)
     assert all("linkedin.com/jobs/search" in url for url in urls)
 
@@ -71,7 +71,7 @@ def test_applicant_count_linkedin_hard() -> None:
     assert applicant_count_ok(99, linkedin_source=True)
     assert not applicant_count_ok(100, linkedin_source=True)
     assert not applicant_count_ok(None, linkedin_source=True)
-    assert applicant_count_ok(None, linkedin_source=False)
+    assert not applicant_count_ok(None, linkedin_source=False)
     assert not applicant_count_ok(100, linkedin_source=False)
     assert applicant_count_ok(12, linkedin_source=False)
 

@@ -73,7 +73,7 @@ class ResearchService:
     async def _generate(
         self, job: Job, candidate_summary: str, user_id: str
     ) -> CompanyResearchResult:
-        if not self.settings.openai_api_key:
+        if not self.settings.open_router_token:
             # Offline/dev fallback with explicit low confidence
             return CompanyResearchResult(
                 company=job.company,

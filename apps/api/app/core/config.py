@@ -55,18 +55,18 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
-    # LLM
-    llm_provider: Literal["openai"] = "openai"
-    openai_api_key: str | None = None
-    openai_model: str = "gpt-4.1-mini"
-    openai_base_url: str | None = None
+    # OpenRouter exposes an OpenAI-compatible API; the OpenAI SDK is used as its client.
+    llm_provider: Literal["openrouter"] = "openrouter"
+    open_router_token: str | None = None
+    openai_model: str = "openai/gpt-6-luna"
+    openai_base_url: str = "https://openrouter.ai/api/v1"
     llm_max_retries: int = 3
     llm_timeout_seconds: float = 60.0
 
     # Application quality controls
     daily_application_limit: int = 10
     min_match_score: float = 0.65
-    min_fit_score_10: float = 7.0
+    min_fit_score_10: float = 8.0
     min_relevance_score_10: float = 7.0
     min_resume_score: float = 0.70
     min_outreach_evidence_confidence: float = 0.60
@@ -130,12 +130,12 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.app_env == "production"
 
-    def require_openai_key(self) -> str:
-        if not self.openai_api_key:
+    def require_open_router_token(self) -> str:
+        if not self.open_router_token:
             raise RuntimeError(
-                "OPENAI_API_KEY is not configured. Set it in the environment to use AI features."
+                "OPEN_ROUTER_TOKEN is not configured. Set it in .env to use AI features."
             )
-        return self.openai_api_key
+        return self.open_router_token
 
     @property
     def google_oauth_configured(self) -> bool:

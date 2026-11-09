@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from "./api";
+import { apiFetch, apiGet, apiPost, apiPut } from "./api";
 import type {
   Application,
   Contact,
@@ -25,16 +25,19 @@ export type RecentJobMatch = {
   source: string;
   fit_score: number;
   apply_link: string;
+  location?: string | null;
+  applicant_count?: number | null;
 };
 
 export const endpoints = {
   dashboardStats: () => apiGet<DashboardStats>("/api/dashboard/stats"),
-  recentJobMatches: (regions: string[]) =>
+  recentJobMatches: (regions: string[], postedWithinHours: number) =>
     apiPost<RecentJobMatch[]>("/api/jobs/eea-search", {
       query: "software engineer",
       limit: 10,
-      sources: ["chatgpt_google", "linkedin_apify"],
+      sources: ["linkedin_apify"],
       regions,
+      posted_within_hours: postedWithinHours,
     }),
   jobs: (query = "") =>
     apiGet<Paginated<Job> | Job[]>(`/api/jobs${query ? `?${query}` : ""}`),
@@ -63,6 +66,8 @@ export const endpoints = {
     apiGet<WorkerInfo[]>("/api/dev/workers").catch(() => [] as WorkerInfo[]),
   contacts: () => apiGet<Paginated<Contact> | Contact[]>("/api/contacts"),
   resumes: () => apiGet<Paginated<ResumeSummary> | ResumeSummary[]>("/api/resumes"),
+  uploadResume: (body: FormData) =>
+    apiFetch<ResumeSummary>("/api/resumes", { method: "POST", body }),
   research: () => apiGet<Paginated<ResearchNote> | ResearchNote[]>("/api/research"),
   outreach: () =>
     apiGet<Paginated<OutreachMessage> | OutreachMessage[]>("/api/outreach"),

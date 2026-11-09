@@ -108,8 +108,10 @@ export async function apiFetch<T>(
       : API_URL;
   const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
   const headers = new Headers(options.headers);
+  const multipartBody =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
 
-  if (options.body !== undefined && !headers.has("Content-Type")) {
+  if (options.body !== undefined && !multipartBody && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -128,7 +130,12 @@ export async function apiFetch<T>(
   const res = await fetch(url, {
     method,
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body:
+      options.body === undefined
+        ? undefined
+        : multipartBody
+          ? (options.body as FormData)
+          : JSON.stringify(options.body),
     credentials: "include",
     signal: options.signal,
     cache: "no-store",

@@ -143,6 +143,11 @@ class ScoringService:
         job_seniority = _infer_seniority(f"{job.title} {job.description}")
         cand_seniority = profile.seniority_level.lower()
         seniority_score = self._seniority_score(cand_seniority, job_seniority)
+        resume_data = profile.structured_profile or {}
+        resume_titles = resume_data.get("relevant_job_titles", [])
+        if not isinstance(resume_titles, list):
+            resume_titles = []
+        title_score = self._title_match(job.title, resume_titles)
 
         location_score = self._location_score(job, profile)
         salary_score = self._salary_score(job, profile)
@@ -165,6 +170,7 @@ class ScoringService:
             skill_score=skill_score,
             experience_score=experience_score,
             seniority_score=seniority_score,
+            title_score=title_score,
             missing=missing,
             job_skills=job_skills,
             matched=matched,
@@ -198,6 +204,7 @@ class ScoringService:
                 "technical": skill_score,
                 "experience": experience_score,
                 "seniority": seniority_score,
+                "title_match": title_score,
                 "location": location_score,
                 "domain": domain_score,
                 "salary": salary_score,
@@ -234,15 +241,17 @@ class ScoringService:
         skill_score: float,
         experience_score: float,
         seniority_score: float,
+        title_score: float,
         missing: list[str],
         job_skills: set[str],
         matched: list[str],
     ) -> float:
         """Strict 0–10 Fit Score; missing mandatory skills reduce the score."""
         base = (
-            0.45 * skill_score
-            + 0.25 * experience_score
-            + 0.20 * seniority_score
+            0.40 * skill_score
+            + 0.20 * experience_score
+            + 0.15 * seniority_score
+            + 0.15 * title_score
             + 0.10 * (1.0 if matched else 0.4)
         ) * 10.0
         if job_skills and missing:
@@ -253,6 +262,23 @@ class ScoringService:
         if experience_score < 0.5:
             base -= 1.0
         return round(min(10.0, max(0.0, base)), 1)
+
+    @staticmethod
+    def _title_match(job_title: str, resume_titles: list[Any]) -> float:
+        """Compare role wording with titles explicitly extracted from the resume."""
+        titles = [str(title) for title in resume_titles if title]
+        if not titles:
+            return 0.5
+        stop_words = {"senior", "junior", "staff", "principal", "lead", "and", "the"}
+        job_terms = set(_norm(job_title).split()) - stop_words
+        if not job_terms:
+            return 0.5
+        best = 0.0
+        for title in titles:
+            resume_terms = set(_norm(title).split()) - stop_words
+            if resume_terms:
+                best = max(best, len(job_terms & resume_terms) / len(job_terms))
+        return best
 
     def _recommend(self, score: float) -> MatchRecommendation:
         threshold = self.settings.min_match_score
@@ -314,11 +340,16 @@ class ScoringService:
 
     @staticmethod
     def _domain_score(job: Job, profile: CandidateProfile) -> float:
+        structured = profile.structured_profile or {}
         blob = _norm(
             " ".join(
                 [
                     profile.professional_summary or "",
                     " ".join(str(x) for x in profile.work_history or []),
+                    " ".join(str(x) for x in structured.get("relevant_job_titles", [])),
+                    " ".join(str(x) for x in structured.get("relevant_responsibilities", [])),
+                    " ".join(str(x) for x in structured.get("industries", [])),
+                    " ".join(str(x) for x in structured.get("other_relevant_qualifications", [])),
                 ]
             )
         )

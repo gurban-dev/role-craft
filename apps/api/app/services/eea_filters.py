@@ -135,7 +135,6 @@ JOB_REGIONS: tuple[str, ...] = (
     "South America",
     "Asia",
     "Africa",
-    "Australia",
 )
 
 _REGION_MARKERS: dict[str, tuple[str, ...]] = {
@@ -249,16 +248,6 @@ _REGION_MARKERS: dict[str, tuple[str, ...]] = {
         "nairobi",
         "cairo",
         "accra",
-    ),
-    "Australia": (
-        "australia",
-        "australian",
-        "sydney",
-        "melbourne",
-        "brisbane",
-        "perth",
-        "adelaide",
-        "canberra",
     ),
 }
 
@@ -403,9 +392,9 @@ def posted_within_hours(posted_at: datetime | None, hours: int = 24, *, now: dat
 
 
 def applicant_count_ok(count: int | None, *, linkedin_source: bool) -> bool:
-    """Require fewer than 100 applicants. LinkedIn must publish the count."""
+    """Require a verified count below 100, regardless of the source."""
     if count is None:
-        return not linkedin_source
+        return False
     return count < 100
 
 

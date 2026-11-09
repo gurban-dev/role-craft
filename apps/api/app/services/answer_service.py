@@ -58,7 +58,7 @@ class AnswerService:
     async def _generate(
         self, job: Job, answer_bank: dict, user_id: str
     ) -> ApplicationAnswerDraft:
-        if not self.settings.openai_api_key:
+        if not self.settings.open_router_token:
             # Deterministic offline draft from answer bank keys only
             answers = {str(k): str(v) for k, v in answer_bank.items() if v is not None}
             return ApplicationAnswerDraft(

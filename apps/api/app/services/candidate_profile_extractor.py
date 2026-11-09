@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -47,11 +48,13 @@ class StructuredCandidateProfile(BaseModel):
             f"Architecture: {', '.join(self.architecture) or '—'}",
             f"Tools: {', '.join(self.tools) or '—'}",
             f"Industries: {', '.join(self.industries) or '—'}",
-            f"Years of experience: {self.years_of_experience if self.years_of_experience is not None else '—'}",
+            "Years of experience: "
+            f"{self.years_of_experience if self.years_of_experience is not None else '—'}",
             f"Relevant job titles: {', '.join(self.relevant_job_titles) or '—'}",
             f"Relevant responsibilities: {'; '.join(self.relevant_responsibilities) or '—'}",
             f"Education: {'; '.join(self.education) or '—'}",
-            f"Other relevant qualifications: {', '.join(self.other_relevant_qualifications) or '—'}",
+            "Other relevant qualifications: "
+            f"{', '.join(self.other_relevant_qualifications) or '—'}",
         ]
         return "\n".join(lines)
 
@@ -86,7 +89,10 @@ class CandidateProfileExtractor:
             "tools": [],
         }
         rules: list[tuple[str, tuple[str, ...]]] = [
-            ("languages", ("python", "typescript", "javascript", "java", "go", "rust", "kotlin", "c#", "sql")),
+            (
+                "languages",
+                ("python", "typescript", "javascript", "java", "go", "rust", "kotlin", "c#", "sql"),
+            ),
             ("frameworks", ("django", "fastapi", "flask", "spring", "express", "nestjs")),
             ("frontend", ("react", "next.js", "vue", "angular", "svelte", "css", "html")),
             ("backend", ("fastapi", "django", "flask", "node", "nestjs", "spring")),
@@ -155,7 +161,7 @@ class CandidateProfileExtractor:
         self, resume_text: str, *, user_id: str | None = None
     ) -> StructuredCandidateProfile:
         """LLM extract when available; otherwise empty-safe heuristic from free text."""
-        if self.settings.openai_api_key and self.db is not None:
+        if self.settings.open_router_token and self.db is not None:
             from app.integrations.llm.factory import get_llm_provider
 
             provider = get_llm_provider(self.settings, db=self.db)
@@ -189,27 +195,61 @@ class CandidateProfileExtractor:
             "Python",
             "TypeScript",
             "JavaScript",
+            "Java",
+            "C#",
+            "C++",
+            "Go",
+            "Rust",
+            "Ruby",
+            "PHP",
+            "Kotlin",
             "React",
             "Next.js",
+            "Vue",
+            "Angular",
             "FastAPI",
             "Django",
+            "Flask",
+            "Node.js",
+            "Spring",
             "PostgreSQL",
+            "MySQL",
+            "MongoDB",
             "Redis",
             "Docker",
             "Kubernetes",
+            "Terraform",
             "AWS",
+            "Azure",
             "GCP",
             "Playwright",
+            "Jest",
             "pytest",
             "SQL",
             "GraphQL",
-            "Node.js",
+            "Kafka",
+            "Git",
+            "CI/CD",
         ]
         lower = text.lower()
         stub.skills = [k for k in known if k.lower() in lower]
-        return self._heuristic_from_profile(stub)
+        structured = self._heuristic_from_profile(stub)
+        years = re.search(
+            r"\b(\d+(?:\.\d+)?)\s*\+?\s+years?\s+(?:of\s+)?(?:professional\s+)?experience\b",
+            lower,
+        )
+        structured.years_of_experience = float(years.group(1)) if years else None
+        title_lines = [
+            line.strip(" •\t-")
+            for line in text.splitlines()
+            if re.search(r"\b(engineer|developer|architect|programmer|technician)\b", line, re.I)
+        ]
+        structured.relevant_job_titles = title_lines[:8]
+        return structured
 
-    async def persist(self, profile: CandidateProfile, structured: StructuredCandidateProfile) -> None:
+    async def persist(
+        self, profile: CandidateProfile, structured: StructuredCandidateProfile
+    ) -> None:
         profile.structured_profile = structured.model_dump()
         # Sync flat skills for existing scorers without inventing new ones
         flat: list[Any] = []
@@ -223,14 +263,36 @@ class CandidateProfileExtractor:
             "devops",
             "infrastructure",
             "testing",
+            "architecture",
             "tools",
         ):
             for item in getattr(structured, key):
                 if item and item not in flat:
                     flat.append(item)
-        if flat and not profile.skills:
-            profile.skills = flat
+        existing = [
+            str(skill.get("name") if isinstance(skill, dict) else skill)
+            for skill in (profile.skills or [])
+            if skill
+        ]
+        seen = {skill.casefold() for skill in existing}
+        for skill in flat:
+            if skill.casefold() not in seen:
+                existing.append(skill)
+                seen.add(skill.casefold())
+        profile.skills = existing
         if structured.years_of_experience is not None:
             profile.years_experience = float(structured.years_of_experience)
+        titles = " ".join(structured.relevant_job_titles).lower()
+        for title_word, level in (
+            ("principal", "principal"),
+            ("staff", "staff"),
+            ("lead", "lead"),
+            ("senior", "senior"),
+            ("junior", "junior"),
+            ("intern", "intern"),
+        ):
+            if re.search(rf"\b{title_word}\b", titles):
+                profile.seniority_level = level
+                break
         if self.db is not None:
             await self.db.flush()

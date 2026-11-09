@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote_plus
@@ -21,12 +22,22 @@ APIFY_RUN_SYNC = "https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-
 # f_TPR=r86400 is LinkedIn's "past 24 hours".
 
 
-def linkedin_search_urls(query: str, regions: list[str] | None = None) -> list[str]:
-    """One past-24-hours search per selected region, in person or remote."""
+def linkedin_search_urls(
+    query: str,
+    regions: list[str] | None = None,
+    posted_within_hours: int = 24,
+) -> list[str]:
+    """Search each selected region using LinkedIn's nearest supported date window."""
     keywords = quote_plus(query or "software engineer")
+    if posted_within_hours <= 24:
+        date_filter = "r86400"
+    elif posted_within_hours > 168:
+        date_filter = "r2592000"
+    else:
+        date_filter = "r604800"
     return [
         "https://www.linkedin.com/jobs/search/"
-        f"?keywords={keywords}&location={quote_plus(region)}&f_TPR=r86400&sortBy=DD"
+        f"?keywords={keywords}&location={quote_plus(region)}&f_TPR={date_filter}&sortBy=DD"
         for region in normalize_regions(regions)
     ]
 
@@ -55,6 +66,22 @@ def _parse_posted_at(raw: Any) -> datetime | None:
         if "minute" in lower or "min" in lower:
             return now - timedelta(minutes=max(hours, 1))
         return now - timedelta(hours=max(hours, 1))
+    relative = re.fullmatch(r"(\d+)\s+(day|days|week|weeks|month|months)\s+ago", lower)
+    if relative:
+        count = int(relative.group(1))
+        unit = relative.group(2)
+        if unit.startswith("week"):
+            age_days = count * 7
+            upper_bound_days = 7
+        elif unit.startswith("month"):
+            age_days = count * 30
+            upper_bound_days = 30
+        else:
+            age_days = count
+            upper_bound_days = 1
+        # Use the oldest bound of the relative label so the exact cutoff never
+        # accepts a result that might be older than the requested window.
+        return now - timedelta(days=age_days + upper_bound_days)
     try:
         # ISO
         if text.endswith("Z"):
@@ -89,7 +116,11 @@ class ApifyLinkedInJobsSource:
             return []
 
         actor_input: dict[str, Any] = {
-            "urls": linkedin_search_urls(criteria.query, criteria.extras.get("regions")),
+            "urls": linkedin_search_urls(
+                criteria.query,
+                criteria.extras.get("regions"),
+                criteria.posted_within_hours or 24,
+            ),
             "limitPerSource": min(max(criteria.limit, 10), 20),
             "scrapeCompany": False,
         }
@@ -101,7 +132,7 @@ class ApifyLinkedInJobsSource:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
                     url,
-                    params={"token": settings.apify_api_token},
+                    headers={"Authorization": f"Bearer {settings.apify_api_token}"},
                     json=actor_input,
                 )
                 if response.status_code >= 400:

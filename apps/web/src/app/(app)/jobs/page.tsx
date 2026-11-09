@@ -24,9 +24,13 @@ export default async function JobsPage({
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
   const status = typeof sp.status === "string" ? sp.status : "";
+  const postedWithin = typeof sp.posted_within_hours === "string" ? sp.posted_within_hours : "";
   const query = new URLSearchParams();
   if (q) query.set("q", q);
   if (status) query.set("status", status);
+  if (["24", "72", "168", "720"].includes(postedWithin)) {
+    query.set("posted_within_hours", postedWithin);
+  }
 
   let jobs: Job[] = [];
   let error: string | null = null;

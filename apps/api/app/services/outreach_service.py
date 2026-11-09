@@ -216,7 +216,7 @@ class OutreachService:
         research: CompanyResearch | None,
         contact: Contact,
     ) -> OutreachDraft:
-        if not self.settings.openai_api_key:
+        if not self.settings.open_router_token:
             return OutreachDraft(
                 recipient_name=contact.name,
                 recipient_type=contact.contact_type,

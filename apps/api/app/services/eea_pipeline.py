@@ -66,7 +66,7 @@ def validate_hard_requirements(
 
     country = item.country_code or detect_country_code(item.location, item.description)
     meta["country_code"] = country
-    market_parts = (item.location, item.remote_status, item.title, item.description[:1500])
+    market_parts = (item.location, item.remote_status)
     region = match_region(*market_parts, regions=regions)
     if region:
         evidence.location = f"{region}:{country}:{item.location}"
@@ -114,13 +114,11 @@ def validate_hard_requirements(
         evidence.reasons_rejected.append("applicant_count_fail")
         evidence.applicant_count = (
             f"unavailable_or_too_high:{item.applicant_count}"
-            if linkedin
-            else f"n/a_non_linkedin:{item.applicant_count}"
+            if item.applicant_count is not None
+            else "unavailable"
         )
     else:
-        evidence.applicant_count = (
-            str(item.applicant_count) if item.applicant_count is not None else "n/a_non_linkedin"
-        )
+        evidence.applicant_count = str(item.applicant_count)
 
     apply_url = company_website_apply_url(item.official_application_url, item.source_url)
     if not apply_url:

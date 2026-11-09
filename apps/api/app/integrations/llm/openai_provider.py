@@ -21,6 +21,7 @@ T = TypeVar("T", bound=BaseModel)
 
 # Approximate USD per 1M tokens for common models (input, output)
 _MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "gpt-6-luna": (0.10, 0.50),
     "gpt-4.1-mini": (0.40, 1.60),
     "gpt-4.1": (2.00, 8.00),
     "gpt-4o-mini": (0.15, 0.60),
@@ -31,10 +32,10 @@ _MODEL_PRICING: dict[str, tuple[float, float]] = {
 def _estimate_cost(model: str, input_tokens: int | None, output_tokens: int | None) -> float | None:
     if input_tokens is None and output_tokens is None:
         return None
-    pricing = _MODEL_PRICING.get(model)
+    pricing = _MODEL_PRICING.get(model.removeprefix("openai/"))
     if not pricing:
-        # Fallback heuristic
-        pricing = (1.0, 3.0)
+        # Unknown models are not assigned a misleading estimated cost.
+        return None
     inp, out = pricing
     return round(
         ((input_tokens or 0) * inp + (output_tokens or 0) * out) / 1_000_000,
@@ -54,12 +55,12 @@ class OpenAIProvider:
         self._client: AsyncOpenAI | None = None
 
     def _get_client(self) -> AsyncOpenAI:
-        if not self.settings.openai_api_key:
+        if not self.settings.open_router_token:
             raise ConfigurationError(
-                "OPENAI_API_KEY is not configured. Set it in the environment to use AI features."
+                "OPEN_ROUTER_TOKEN is not configured. Set it in .env to use AI features."
             )
         if self._client is None:
-            kwargs: dict = {"api_key": self.settings.openai_api_key}
+            kwargs: dict = {"api_key": self.settings.open_router_token}
             if self.settings.openai_base_url:
                 kwargs["base_url"] = self.settings.openai_base_url
             self._client = AsyncOpenAI(**kwargs, timeout=self.settings.llm_timeout_seconds)
@@ -112,7 +113,7 @@ class OpenAIProvider:
             cost = _estimate_cost(model_name, input_tokens, output_tokens)
             logger.info(
                 "llm_generate",
-                provider="openai",
+                provider="openrouter",
                 model=model_name,
                 operation=operation or schema.__name__,
                 latency_ms=latency_ms,
@@ -131,7 +132,7 @@ class OpenAIProvider:
                 self.db.add(
                     AiUsage(
                         user_id=uid,
-                        provider="openai",
+                        provider="openrouter",
                         model=model_name,
                         operation=operation or schema.__name__,
                         input_tokens=input_tokens,

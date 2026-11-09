@@ -23,7 +23,7 @@ SENSITIVE_KEYS = {
     "access_token",
     "refresh_token",
     "api_key",
-    "openai_api_key",
+    "open_router_token",
     "authorization",
     "cookie",
     "cookies",

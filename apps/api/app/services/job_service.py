@@ -273,7 +273,34 @@ class JobService:
         from app.services.rate_limit import RateLimitService
 
         settings = get_settings()
-        if not settings.openai_api_key:
+        if job.description and re.search(r"</?[a-z][^>]*>", job.description, re.I):
+            from app.services.job_description_extractor import clean_html_content
+
+            cleaned = clean_html_content(job.description)
+            if cleaned:
+                job.description = cleaned
+        if len(job.description or "") < 400 and (job.source_url or job.official_application_url):
+            try:
+                from app.services.job_description_extractor import extract_job_page
+
+                extracted = await extract_job_page(job.source_url or job.official_application_url)
+                clean_description = extracted["job_description"]
+                if len(clean_description) > len(job.description or ""):
+                    job.description = clean_description
+                if extracted["applicant_count"] is not None and job.applicant_count is None:
+                    job.applicant_count = extracted["applicant_count"]
+                raw = dict(job.raw_payload or {})
+                raw["job_content_extraction"] = {
+                    key: value for key, value in extracted.items() if key != "job_description"
+                }
+                job.raw_payload = raw
+            except Exception as exc:
+                logger.info(
+                    "job_page_extraction_unavailable",
+                    job_id=str(job.id),
+                    error_type=type(exc).__name__,
+                )
+        if not settings.open_router_token:
             return
         # Skip if already richly structured
         if job.technologies and job.requirements and len(job.description or "") < 50:
@@ -286,7 +313,7 @@ class JobService:
                     "Analyze this job description. Extract skills, seniority, and salary "
                     "when explicitly present. Do not invent requirements.\n\n"
                     f"Title: {job.title}\nCompany: {job.company}\n"
-                    f"Description:\n{(job.description or '')[:6000]}"
+                    f"Description:\n{job.description or ''}"
                 ),
                 JobAnalysis,
                 operation="job_analysis",

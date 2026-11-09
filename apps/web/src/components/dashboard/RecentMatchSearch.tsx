@@ -6,25 +6,33 @@ import { ApiError } from "@/lib/api";
 import { endpoints, type RecentJobMatch } from "@/lib/endpoints";
 import { useState } from "react";
 
+// With as const, the TypeScript compiler transforms it into
+// a readonly tuple. This strips away all methods that mutate
+// data and blocks direct index assignments.
 export const JOB_REGIONS = [
   "Europe",
   "North America",
   "South America",
   "Asia",
   "Africa",
-  "Australia",
 ] as const;
 
 const columns: Column<RecentJobMatch>[] = [
   { key: "rank", header: "#", render: (row) => row.rank },
   { key: "role", header: "Role", render: (row) => row.role },
   { key: "company", header: "Company", render: (row) => row.company },
+  { key: "location", header: "Location", render: (row) => row.location || "—" },
   {
     key: "posted",
     header: "Posted",
     render: (row) => formatPosted(row.posted),
   },
   { key: "source", header: "Source", render: (row) => row.source },
+  {
+    key: "applicants",
+    header: "Applicants",
+    render: (row) => row.applicant_count ?? "—",
+  },
   {
     key: "fit",
     header: "Fit Score",
@@ -57,7 +65,8 @@ function formatPosted(value: string): string {
 }
 
 export function RecentMatchSearch() {
-  const [regions, setRegions] = useState<string[]>(["Europe"]);
+  const [regions, setRegions] = useState<string[]>([...JOB_REGIONS]);
+  const [postedWithinHours, setPostedWithinHours] = useState(24);
   const [rows, setRows] = useState<RecentJobMatch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -78,7 +87,7 @@ export function RecentMatchSearch() {
     setPending(true);
     setError(null);
     try {
-      const matches = await endpoints.recentJobMatches(regions);
+      const matches = await endpoints.recentJobMatches(regions, postedWithinHours);
       setRows(matches);
     } catch (err) {
       setRows(null);
@@ -98,8 +107,46 @@ export function RecentMatchSearch() {
     <div className="mb-4 w-full">
       <fieldset className="mb-3">
         <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+          Posted within
+        </legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {[
+            { hours: 24, label: "Past 24 hours" },
+            { hours: 72, label: "Past 72 hours" },
+            { hours: 168, label: "Past 7 days" },
+            { hours: 720, label: "Past month" },
+          ].map((range) => (
+            <label
+              key={range.hours}
+              className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                postedWithinHours === range.hours
+                  ? "border-[var(--accent)] text-[var(--accent)]"
+                  : "border-[var(--border)] text-[var(--fg)]"
+              }`}
+            >
+              <input
+                type="radio"
+                name="posted-within-hours"
+                value={range.hours}
+                checked={postedWithinHours === range.hours}
+                onChange={() => {
+                  setPostedWithinHours(range.hours);
+                  setRows(null);
+                  setError(null);
+                }}
+              />
+              {range.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset className="mb-3">
+        <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
           Region
         </legend>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          Jobs can match any selected region. Uncheck regions you do not want to search.
+        </p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
           {JOB_REGIONS.map((region) => (
             <label key={region} className="flex items-center gap-2 text-sm">
@@ -120,7 +167,7 @@ export function RecentMatchSearch() {
         disabled={pending || regions.length === 0}
         data-testid="recent-match-search"
       >
-        {pending ? "Searching last 24 hours…" : "Find matching jobs"}
+        {pending ? "Searching…" : "Find matching jobs"}
       </button>
       {error ? (
         <div className="mt-3">
@@ -134,7 +181,7 @@ export function RecentMatchSearch() {
             rows={rows}
             rowKey={(row) => `${row.rank}-${row.apply_link}`}
             emptyTitle="No matching jobs"
-            emptyDescription="No roles posted in the last 24 hours scored above 7."
+            emptyDescription="No LinkedIn jobs met every filter, including a verified applicant count below 100 and a resume-fit score of at least 8/10. Try a wider date window."
           />
         </div>
       ) : null}

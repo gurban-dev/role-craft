@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -59,7 +60,9 @@ class User(Base, TimestampMixin):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    google_sub: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    google_sub: Mapped[str | None] = mapped_column(
+        String(255), unique=True, index=True, nullable=True
+    )
     auth_providers: Mapped[list[Any]] = mapped_column(JSONType, default=list)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
     daily_application_limit: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
@@ -214,6 +217,9 @@ class Resume(Base, TimestampMixin):
     ats_analysis: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     quality_score: Mapped[float | None] = mapped_column(Float)
     file_path: Mapped[str | None] = mapped_column(String(1024))
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    original_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    original_file: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     checksum: Mapped[str | None] = mapped_column(String(128))
     explainability: Mapped[list[Any]] = mapped_column(JSONType, default=list)
 

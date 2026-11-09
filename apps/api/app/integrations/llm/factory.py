@@ -15,6 +15,6 @@ def get_llm_provider(
     db: AsyncSession | None = None,
 ) -> OpenAIProvider:
     settings = settings or get_settings()
-    if settings.llm_provider == "openai":
+    if settings.llm_provider == "openrouter":
         return OpenAIProvider(settings=settings, db=db)
     raise ConfigurationError(f"Unsupported LLM provider: {settings.llm_provider}")

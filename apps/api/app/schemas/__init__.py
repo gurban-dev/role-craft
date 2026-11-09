@@ -148,7 +148,6 @@ JobRegion = Literal[
     "South America",
     "Asia",
     "Africa",
-    "Australia",
 ]
 
 
@@ -156,7 +155,12 @@ class EEAJobSearchRequest(BaseModel):
     query: str = "software engineer"
     limit: int = Field(default=10, ge=1, le=10)
     sources: list[str] | None = None
-    regions: list[JobRegion] = Field(default_factory=lambda: ["Europe"], min_length=1, max_length=6)
+    regions: list[JobRegion] = Field(
+        default_factory=lambda: ["Europe", "North America", "South America", "Asia", "Africa"],
+        min_length=1,
+        max_length=5,
+    )
+    posted_within_hours: Literal[24, 72, 168, 720] = 24
 
 
 class EEAJobRow(BaseModel):
@@ -167,6 +171,8 @@ class EEAJobRow(BaseModel):
     source: str
     fit_score: float
     apply_link: str
+    location: str | None = None
+    applicant_count: int | None = None
 
 
 class NetworkingRequest(BaseModel):
@@ -313,6 +319,7 @@ class ResumeOut(ORMModel):
     version: int
     quality_score: float | None
     file_path: str | None
+    original_filename: str | None = None
     ats_analysis: dict[str, Any]
     explainability: list[Any]
     created_at: datetime

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession, require_csrf
 from app.integrations.job_sources.registry import list_job_sources
@@ -25,12 +28,15 @@ async def list_jobs(
     user: CurrentUser,
     db: DbSession,
     limit: int = Query(default=50, ge=1, le=200),
+    posted_within_hours: Literal[24, 72, 168, 720] | None = Query(default=None),
 ) -> list[JobOut]:
-    from sqlalchemy import select
-
     from app.models import Job
 
-    result = await db.execute(select(Job).order_by(Job.discovered_at.desc()).limit(limit))
+    statement = select(Job)
+    if posted_within_hours is not None:
+        cutoff = datetime.now(UTC) - timedelta(hours=posted_within_hours)
+        statement = statement.where(Job.posted_at.is_not(None), Job.posted_at >= cutoff)
+    result = await db.execute(statement.order_by(Job.discovered_at.desc()).limit(limit))
     return [JobOut.model_validate(j) for j in result.scalars().all()]
 
 
@@ -53,6 +59,7 @@ async def eea_search(
         limit=data.limit,
         sources=data.sources,
         regions=list(data.regions),
+        posted_within_hours=data.posted_within_hours,
     )
     return [EEAJobRow.model_validate(r) for r in rows]
 

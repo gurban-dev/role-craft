@@ -89,7 +89,7 @@ class ContactService:
         return contact
 
     async def _recommend(self, job: Job, user_id: str) -> ContactRecommendation:
-        if not self.settings.openai_api_key:
+        if not self.settings.open_router_token:
             return ContactRecommendation(
                 name="",
                 company=job.company,

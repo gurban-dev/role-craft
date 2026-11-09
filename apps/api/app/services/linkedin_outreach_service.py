@@ -74,7 +74,7 @@ class LinkedInOutreachService:
             async with httpx.AsyncClient(timeout=90.0) as client:
                 response = await client.post(
                     url,
-                    params={"token": self.settings.apify_api_token},
+                    headers={"Authorization": f"Bearer {self.settings.apify_api_token}"},
                     json={"profileUrls": [linkedin_url]},
                 )
                 if response.status_code >= 400:

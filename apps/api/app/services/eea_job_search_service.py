@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +56,7 @@ class EEAJobSearchService:
         limit: int = 10,
         sources: list[str] | None = None,
         regions: list[str] | None = None,
+        posted_within_hours: int | None = None,
     ) -> list[dict]:
         """Run phases 1–20 of the EEA workflow; return top qualifying rows (≤10)."""
         from app.services.rate_limit import RateLimitService
@@ -65,11 +67,12 @@ class EEAJobSearchService:
             return []
         await self.ensure_structured_profile(profile, str(user.id))
 
-        hours = self.settings.eea_posted_within_hours
+        hours = posted_within_hours or self.settings.eea_posted_within_hours
         skills = [str(s) for s in (profile.skills or []) if s][:8]
         selected_regions = normalize_regions(regions)
+        linkedin_query = " ".join([query, *skills[:3]]).strip()
         criteria = JobSearchCriteria(
-            query=query,
+            query=linkedin_query,
             location=None,
             remote_only=False,
             limit=max(limit * 5, 40),
@@ -91,18 +94,14 @@ class EEAJobSearchService:
         min_fit = self.settings.min_fit_score_10
         now = datetime.now(UTC)
         qualified: list[QualifiedJob] = []
+        rejection_counts: Counter[str] = Counter()
 
         for item in discovered:
             ok, evidence, meta = validate_hard_requirements(
                 item, now=now, hours=hours, regions=selected_regions
             )
             if not ok:
-                logger.debug(
-                    "eea_job_rejected",
-                    title=item.title,
-                    company=item.company,
-                    reasons=evidence.reasons_rejected,
-                )
+                rejection_counts.update(evidence.reasons_rejected)
                 continue
 
             job = await self._persist_discovered(item, meta, evidence_dump=evidence.__dict__)
@@ -110,7 +109,8 @@ class EEAJobSearchService:
             match = await self.job_service._upsert_match(job, profile)
             await self.job_service._ensure_application(user, job, profile, match)
 
-            if (job.fit_score_10 or 0) <= min_fit:
+            if (job.fit_score_10 or 0) < min_fit:
+                rejection_counts["fit_score_below_threshold"] += 1
                 continue
             qualified.append(
                 QualifiedJob(
@@ -143,7 +143,13 @@ class EEAJobSearchService:
                     "applicant_count": q.job.applicant_count,
                 }
             )
-        logger.info("eea_search_complete", user_id=str(user.id), returned=len(rows))
+        logger.info(
+            "eea_search_complete",
+            user_id=str(user.id),
+            candidates=len(discovered),
+            returned=len(rows),
+            rejection_counts=dict(rejection_counts),
+        )
         return rows
 
     async def _persist_discovered(self, item: DiscoveredJob, meta: dict, evidence_dump: dict) -> Job:

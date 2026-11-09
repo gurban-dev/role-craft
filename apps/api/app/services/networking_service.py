@@ -183,7 +183,7 @@ class NetworkingService:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(
                     url,
-                    params={"token": self.settings.apify_api_token},
+                    headers={"Authorization": f"Bearer {self.settings.apify_api_token}"},
                     json={"companyName": job.company, "maxItems": 40},
                 )
                 if response.status_code >= 400:

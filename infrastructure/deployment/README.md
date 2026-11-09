@@ -3,7 +3,7 @@
 ## Fastest path: Docker Compose on a single VM
 
 1. Provision Ubuntu 24.04+ with Docker Engine + Compose plugin.
-2. Clone the repo, copy `.env.example` to `.env`, set `SECRET_KEY`, `JWT_SECRET`, and `OPENAI_API_KEY`.
+2. Clone the repo, copy `.env.example` to `.env`, set `SECRET_KEY`, `JWT_SECRET`, and `OPEN_ROUTER_TOKEN`.
 3. Run `docker compose -f docker-compose.prod.yml up --build -d`.
 4. Migrations run in the API container start command.
 5. Point a reverse proxy at the web service (port 3000). Keep the API private when possible.

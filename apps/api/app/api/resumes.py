@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, DbSession, require_csrf
@@ -17,6 +20,21 @@ router = APIRouter(prefix="/resumes", tags=["resumes"], dependencies=[Depends(re
 
 class TailorRequest(BaseModel):
     job_id: UUID
+
+
+@router.post("", response_model=ResumeOut, status_code=status.HTTP_201_CREATED)
+async def upload_resume(
+    user: CurrentUser,
+    db: DbSession,
+    file: Annotated[UploadFile, File()],
+) -> ResumeOut:
+    content = await file.read(ResumeService.MAX_RESUME_UPLOAD_BYTES + 1)
+    resume = await ResumeService(db).upload_original(
+        user,
+        filename=file.filename or "resume",
+        content=content,
+    )
+    return ResumeOut.model_validate(resume)
 
 
 @router.get("", response_model=list[ResumeOut])
@@ -42,3 +60,14 @@ async def tailor_resume(
 async def get_resume(resume_id: UUID, user: CurrentUser, db: DbSession) -> ResumeOut:
     resume = await ResumeService(db).get(resume_id, user.id)
     return ResumeOut.model_validate(resume)
+
+
+@router.get("/{resume_id}/download")
+async def download_resume(resume_id: UUID, user: CurrentUser, db: DbSession) -> Response:
+    resume = await ResumeService(db).get_original_file(resume_id, user.id)
+    filename = quote(resume.original_filename or "resume", safe="")
+    return Response(
+        content=resume.original_file,
+        media_type=resume.original_content_type or "application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )

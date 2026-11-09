@@ -25,8 +25,8 @@ class ChatGPTGoogleJobsSource:
 
     async def search(self, criteria: JobSearchCriteria) -> list[DiscoveredJob]:
         settings = get_settings()
-        if not settings.openai_api_key:
-            logger.info("chatgpt_google_fallback", reason="OPENAI_API_KEY unset")
+        if not settings.open_router_token:
+            logger.info("chatgpt_google_fallback", reason="OPEN_ROUTER_TOKEN unset")
             return await GoogleJobsSource().search(criteria)
 
         hours = criteria.posted_within_hours or settings.eea_posted_within_hours
@@ -53,14 +53,14 @@ class ChatGPTGoogleJobsSource:
             "If a required field is not on the page, omit that job. "
             f"Return at most {min(criteria.limit, 20)} jobs."
         )
-        kwargs: dict[str, Any] = {"api_key": settings.openai_api_key}
+        kwargs: dict[str, Any] = {"api_key": settings.open_router_token}
         if settings.openai_base_url:
             kwargs["base_url"] = settings.openai_base_url
         client = AsyncOpenAI(**kwargs, timeout=settings.llm_timeout_seconds)
         try:
             response = await client.responses.create(
                 model=settings.openai_model,
-                tools=[{"type": "web_search"}],
+                tools=[{"type": "openrouter:web_search"}],
                 input=prompt,
             )
             text = _response_text(response)

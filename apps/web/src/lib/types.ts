@@ -84,10 +84,13 @@ export type Application = {
 
 export type ResumeSummary = {
   id: string;
-  name: string;
+  name?: string;
   version?: string | null;
   tailored?: boolean;
   file_url?: string | null;
+  kind?: string;
+  original_filename?: string | null;
+  file_path?: string | null;
 };
 
 export type Contact = {

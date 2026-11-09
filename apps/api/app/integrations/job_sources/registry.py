@@ -20,8 +20,8 @@ _SOURCES: dict[str, JobSource] = {
     ChatGPTGoogleJobsSource.name: ChatGPTGoogleJobsSource(),
 }
 
-# ChatGPT searches Google first, then Apify collects LinkedIn. Both are combined.
-RESUME_MATCH_SOURCES = ["chatgpt_google", "linkedin_apify"]
+# Resume-focused job discovery uses LinkedIn listings only.
+RESUME_MATCH_SOURCES = ["linkedin_apify"]
 EEA_DISCOVERY_SOURCES = RESUME_MATCH_SOURCES
 
 

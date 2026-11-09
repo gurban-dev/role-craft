@@ -43,7 +43,7 @@ From the repository root:
 cp .env.example .env
 ```
 
-Configure `SECRET_KEY`, `JWT_SECRET`, and `OPENAI_API_KEY` in `.env`, then run:
+Configure `SECRET_KEY`, `JWT_SECRET`, and `OPEN_ROUTER_TOKEN` in `.env`, then run:
 
 ```bash
 WEB_GID=$(id -g) docker compose up --build
@@ -131,7 +131,7 @@ Key settings:
 
 - `DATABASE_URL`, `REDIS_URL`: database and Redis connections.
 - `SECRET_KEY`, `JWT_SECRET`: security secrets.
-- `OPENAI_API_KEY`, `OPENAI_MODEL`, `LLM_PROVIDER`: AI configuration.
+- `OPEN_ROUTER_TOKEN`, `OPENAI_MODEL`, `OPENAI_BASE_URL`, `LLM_PROVIDER`: OpenRouter AI configuration.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: optional Google sign-in.
 - `WEB_APP_URL`, `CORS_ORIGINS`: frontend URL and allowed origins.
 - `AUTO_SUBMIT_ENABLED=false`: human approval by default.

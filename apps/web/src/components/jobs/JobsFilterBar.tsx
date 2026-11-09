@@ -25,8 +25,12 @@ export function JobsFilterBar() {
     const next = new URLSearchParams();
     const q = String(fd.get("q") ?? "").trim();
     const status = String(fd.get("status") ?? "");
+    const postedWithin = String(fd.get("posted_within_hours") ?? "");
     if (q) next.set("q", q);
     if (status) next.set("status", status);
+    if (["24", "72", "168", "720"].includes(postedWithin)) {
+      next.set("posted_within_hours", postedWithin);
+    }
     startTransition(() => {
       router.push(`/jobs${next.toString() ? `?${next}` : ""}`);
     });
@@ -65,6 +69,23 @@ export function JobsFilterBar() {
               {s}
             </option>
           ))}
+        </select>
+      </div>
+      <div className="w-48">
+        <label htmlFor="job-posted-within" className="label">
+          Posted
+        </label>
+        <select
+          id="job-posted-within"
+          name="posted_within_hours"
+          className="input"
+          defaultValue={params.get("posted_within_hours") ?? ""}
+        >
+          <option value="">Any time</option>
+          <option value="24">Past 24 hours</option>
+          <option value="72">Past 72 hours</option>
+          <option value="168">Past 7 days</option>
+          <option value="720">Past month</option>
         </select>
       </div>
       <button type="submit" className="btn-primary" disabled={pending}>
