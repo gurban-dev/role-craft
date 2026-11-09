@@ -32,19 +32,37 @@ class ChatGPTGoogleJobsSource:
         hours = criteria.posted_within_hours or settings.eea_posted_within_hours
         regions = normalize_regions(criteria.extras.get("regions"))
         region_text = ", ".join(regions)
+        arrangements = criteria.extras.get("region_work_arrangements") or {}
+        arrangement_text = "; ".join(
+            f"{region}: {', '.join(values)}"
+            for region, values in arrangements.items()
+            if values
+        )
+        seniority = criteria.extras.get("seniority")
+        seniority_instruction = {
+            "senior": "Prefer clearly senior roles only.",
+            "non_senior": "Prefer clearly non-senior roles only.",
+            "both": "Include clearly senior and clearly non-senior roles.",
+            None: "Exclude clearly senior roles, matching the legacy default.",
+        }.get(seniority, "")
         skills = criteria.extras.get("profile_skills") or []
         skill_hint = ", ".join(str(s) for s in skills[:8]) or "general software engineering"
         prompt = (
             "Search Google for software engineering jobs posted in the last "
             f"{hours} hours. Limit the search to these regions: {region_text}. "
-            "Include both in-person and remote roles when the role is based in a selected region. "
+            f"Only include these work arrangements in each region: {arrangement_text or 'any'}. "
+            f"Seniority selection: {seniority_instruction} "
+            "For remote roles, report candidate-eligible countries/regions only when the page "
+            "states them; "
+            "do not infer remote eligibility from an employer address. "
             f"Prefer roles close to these skills: {skill_hint}. "
-            "Exclude senior, staff, principal, lead, manager, and director titles. "
             "Exclude postings that say the company cannot provide a work permit or visa "
             "for the country where the role is based. "
             "Exclude roles that require a language other than English. "
             "Return ONLY a JSON array. Each object must use these keys: "
-            "title, company, location, remote (true/false), posted_at (ISO-8601 UTC, "
+            "title, company, location, work_arrangement (in_person/remote/hybrid), "
+            "eligible_countries (array, only for remote roles when explicitly stated), "
+            "posted_at (ISO-8601 UTC, "
             "only if the page shows a posting time in the window; otherwise omit the job), "
             "apply_url (company career site or ATS link, never LinkedIn/Indeed/Glassdoor), "
             "description (short excerpt of responsibilities and skills), "
@@ -122,7 +140,11 @@ def _to_discovered(item: dict[str, Any]) -> DiscoveredJob | None:
     location = item.get("location")
     location_text = str(location).strip() if location else None
     remote = item.get("remote")
-    remote_status = "remote" if remote is True else None
+    remote_status = (
+        item.get("work_arrangement")
+        or item.get("remote_status")
+        or ("remote" if remote is True else None)
+    )
     description = str(item.get("description") or "")
     applicants = item.get("applicant_count")
     applicant_count = applicants if isinstance(applicants, int) else None
@@ -138,7 +160,7 @@ def _to_discovered(item: dict[str, Any]) -> DiscoveredJob | None:
         official_application_url=apply_url,
         posted_at=posted_at,
         applicant_count=applicant_count,
-        country_code=detect_country_code(location_text, description),
+        country_code=detect_country_code(location_text),
         raw_payload=item,
     )
 

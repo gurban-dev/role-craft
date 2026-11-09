@@ -57,6 +57,8 @@ class EEAJobSearchService:
         sources: list[str] | None = None,
         regions: list[str] | None = None,
         posted_within_hours: int | None = None,
+        seniority: str | None = None,
+        region_work_arrangements: dict[str, list[str]] | None = None,
     ) -> list[dict]:
         """Run phases 1–20 of the EEA workflow; return top qualifying rows (≤10)."""
         from app.services.rate_limit import RateLimitService
@@ -70,6 +72,15 @@ class EEAJobSearchService:
         hours = posted_within_hours or self.settings.eea_posted_within_hours
         skills = [str(s) for s in (profile.skills or []) if s][:8]
         selected_regions = normalize_regions(regions)
+        selected_work_arrangements = region_work_arrangements
+        if selected_work_arrangements is not None:
+            selected_regions = [
+                region
+                for region in selected_regions
+                if selected_work_arrangements.get(region)
+            ]
+            if not selected_regions:
+                return []
         linkedin_query = " ".join([query, *skills[:3]]).strip()
         criteria = JobSearchCriteria(
             query=linkedin_query,
@@ -78,7 +89,12 @@ class EEAJobSearchService:
             limit=max(limit * 5, 40),
             posted_within_hours=hours,
             eea_only=False,
-            extras={"regions": selected_regions, "profile_skills": skills},
+            extras={
+                "regions": selected_regions,
+                "profile_skills": skills,
+                "seniority": seniority,
+                "region_work_arrangements": selected_work_arrangements,
+            },
         )
         source_names = sources or RESUME_MATCH_SOURCES
         discovered: list[DiscoveredJob] = []
@@ -98,7 +114,12 @@ class EEAJobSearchService:
 
         for item in discovered:
             ok, evidence, meta = validate_hard_requirements(
-                item, now=now, hours=hours, regions=selected_regions
+                item,
+                now=now,
+                hours=hours,
+                regions=selected_regions,
+                seniority=seniority,
+                region_work_arrangements=selected_work_arrangements,
             )
             if not ok:
                 rejection_counts.update(evidence.reasons_rejected)
@@ -152,13 +173,15 @@ class EEAJobSearchService:
         )
         return rows
 
-    async def _persist_discovered(self, item: DiscoveredJob, meta: dict, evidence_dump: dict) -> Job:
+    async def _persist_discovered(
+        self, item: DiscoveredJob, meta: dict, evidence_dump: dict
+    ) -> Job:
         key = normalize_job_key(item.company, item.title, item.location)
         existing = await self.jobs.get_by_source_external(item.source, item.external_job_id)
         if existing is None:
             existing = await self.jobs.get_by_normalized_key(key)
 
-        country = meta.get("country_code") or detect_country_code(item.location, item.description)
+        country = meta.get("country_code") or detect_country_code(item.location)
         visa = meta.get("visa_sponsorship") or classify_visa_sponsorship(item.description)
         raw = dict(item.raw_payload or {})
         raw["eea_evidence"] = {
@@ -176,7 +199,7 @@ class EEAJobSearchService:
             if item.official_application_url:
                 job.official_application_url = item.official_application_url
             job.country_code = country
-            job.is_eea = bool(country) or is_eea_location(item.location, item.description)
+            job.is_eea = bool(country) or is_eea_location(item.location)
             job.visa_sponsorship = visa
             job.raw_payload = {**(job.raw_payload or {}), **raw}
             await self.db.flush()
@@ -202,7 +225,7 @@ class EEAJobSearchService:
             posted_at=item.posted_at,
             applicant_count=item.applicant_count,
             country_code=country,
-            is_eea=bool(country) or is_eea_location(item.location, item.description),
+            is_eea=bool(country) or is_eea_location(item.location),
             english_required=True,
             visa_sponsorship=visa,
             status=JobStatus.ACTIVE.value,

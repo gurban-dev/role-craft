@@ -45,6 +45,17 @@ export type Job = {
   updated_at?: string;
 };
 
+export type JobRegion =
+  | "Europe"
+  | "North America"
+  | "South America"
+  | "Asia"
+  | "Africa";
+
+export type JobWorkArrangement = "in_person" | "remote" | "hybrid";
+export type JobSeniorityFilter = "non_senior" | "senior" | "both";
+export type RegionWorkArrangements = Record<JobRegion, JobWorkArrangement[]>;
+
 export type MatchAnalysis = {
   score: number;
   strengths: string[];

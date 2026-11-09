@@ -8,10 +8,15 @@ from uuid import uuid4
 from app.integrations.job_sources.apify_linkedin import linkedin_search_urls
 from app.integrations.job_sources.base import DiscoveredJob
 from app.models import CandidateProfile, Job
+from app.schemas import EEAJobSearchRequest
 from app.services.eea_filters import (
     applicant_count_ok,
+    classify_job_seniority,
+    classify_work_arrangement,
     is_eea_location,
     is_europe_location,
+    job_eligible_regions,
+    matches_region_work_arrangements,
     posted_within_hours,
     title_looks_senior,
     visa_sponsorship_blocked,
@@ -48,6 +53,220 @@ def test_seniority_excludes_senior_titles() -> None:
         "Software Engineer",
         "You will manage a team of 8 engineers with direct reports",
     )
+
+
+def test_seniority_classifier_requires_clear_evidence() -> None:
+    def job(title: str, description: str = "", *, label: str | None = None) -> DiscoveredJob:
+        return DiscoveredJob(
+            title=title,
+            company="Acme",
+            external_job_id=title,
+            source="test",
+            description=description,
+            seniority_label=label,
+        )
+
+    assert classify_job_seniority(job("Senior Software Engineer")) == "senior"
+    assert classify_job_seniority(
+        job("Software Engineer", "At least 8 years of experience.")
+    ) == "senior"
+    assert classify_job_seniority(job("Junior Software Engineer")) == "non_senior"
+    assert classify_job_seniority(
+        job("Software Engineer", "3 years of experience required.")
+    ) == "non_senior"
+    assert classify_job_seniority(
+        job("Software Engineer", "5 years of experience required.")
+    ) == "unknown"
+    assert classify_job_seniority(job("Software Engineer")) == "unknown"
+    assert classify_job_seniority(job("Senior Engineer", "Entry-level role.")) == "unknown"
+    assert classify_job_seniority(job("Software Engineer", label="mid-senior")) == "senior"
+    raw_seniority = job("Software Engineer")
+    raw_seniority.raw_payload = {"experienceLevel": "Entry level"}
+    assert classify_job_seniority(raw_seniority) == "non_senior"
+
+
+def test_work_arrangement_and_geography_are_conservative_and_region_specific() -> None:
+    remote = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="remote-eu",
+        source="test",
+        location="Remote",
+        remote_status="remote",
+        raw_payload={"eligibleCountries": ["DE", "NL"]},
+    )
+    assert classify_work_arrangement(remote) == "remote"
+    assert job_eligible_regions(remote, "remote") == {"Europe"}
+    assert matches_region_work_arrangements(
+        remote,
+        regions=["Europe", "Asia"],
+        work_arrangements={"Europe": ["remote"], "Asia": ["in_person"]},
+    ) == (True, "Europe", "remote")
+
+    generic_remote = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="remote-generic",
+        source="test",
+        location="Remote",
+        remote_status="remote",
+    )
+    assert job_eligible_regions(generic_remote, "remote") == set()
+    assert matches_region_work_arrangements(
+        generic_remote,
+        regions=["Europe"],
+        work_arrangements={"Europe": ["remote"]},
+    ) == (False, None, "remote")
+
+    hybrid_asia = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="hybrid-asia",
+        source="test",
+        location="Singapore",
+        raw_payload={"workplaceType": "HYBRID"},
+    )
+    onsite_africa = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="onsite-africa",
+        source="test",
+        location="Cape Town, South Africa",
+        raw_payload={"workplaceType": "On-site"},
+    )
+    assert matches_region_work_arrangements(
+        hybrid_asia,
+        regions=["Europe", "Asia"],
+        work_arrangements={"Europe": ["hybrid"], "Asia": ["hybrid"]},
+    ) == (True, "Asia", "hybrid")
+    assert matches_region_work_arrangements(
+        onsite_africa,
+        regions=["Africa"],
+        work_arrangements={"Africa": ["in_person"]},
+    ) == (True, "Africa", "in_person")
+
+    ambiguous = DiscoveredJob(
+        title="Software Engineer",
+        company="Acme",
+        external_job_id="ambiguous",
+        source="test",
+        location="Berlin, Germany",
+        description="Remote or on-site depending on preference.",
+    )
+    assert classify_work_arrangement(ambiguous) == "unknown"
+    ambiguous.description = "The position can be remote or hybrid."
+    assert classify_work_arrangement(ambiguous) == "unknown"
+
+
+def test_search_schema_requires_a_work_arrangement_in_a_selected_region() -> None:
+    valid = EEAJobSearchRequest(
+        regions=["Europe", "North America", "Africa"],
+        seniority="both",
+        region_work_arrangements={
+            "Europe": ["remote", "hybrid"],
+            "North America": ["in_person"],
+            "Africa": [],
+        },
+    )
+    assert valid.regions == ["Europe", "North America", "Africa"]
+
+    try:
+        EEAJobSearchRequest(
+            regions=["Europe"],
+            region_work_arrangements={"Europe": []},
+        )
+    except ValueError as exc:
+        assert "Select at least one work arrangement" in str(exc)
+    else:
+        raise AssertionError("request with no active region arrangement should be rejected")
+
+
+def test_hard_filters_apply_seniority_and_region_arrangements_together() -> None:
+    now = datetime.now(UTC)
+    job = DiscoveredJob(
+        title="Senior Software Engineer",
+        company="Acme",
+        external_job_id="senior-eu-remote",
+        source="linkedin_apify",
+        description="English is the working language. We sponsor visas. 8 years of experience.",
+        location="Remote",
+        remote_status="remote",
+        source_url="https://www.linkedin.com/jobs/view/senior-eu-remote",
+        official_application_url="https://careers.acme.example/jobs/senior-eu-remote",
+        posted_at=now - timedelta(hours=2),
+        applicant_count=45,
+        raw_payload={"eligibleCountries": ["Germany", "Netherlands"]},
+    )
+    common = {
+        "now": now,
+        "hours": 24,
+        "regions": ["Europe", "Asia"],
+        "region_work_arrangements": {
+            "Europe": ["remote"],
+            "Asia": ["hybrid"],
+        },
+    }
+    ok, evidence, meta = validate_hard_requirements(job, seniority="senior", **common)
+    assert ok, evidence.reasons_rejected
+    assert meta["market"] == "Europe"
+    assert meta["work_arrangement"] == "remote"
+
+    ok, evidence, _ = validate_hard_requirements(job, seniority="both", **common)
+    assert ok, evidence.reasons_rejected
+
+    ok, evidence, _ = validate_hard_requirements(job, seniority="non_senior", **common)
+    assert not ok
+    assert "seniority_filter_mismatch" in evidence.reasons_rejected
+
+    job.seniority_label = None
+    job.title = "Software Engineer"
+    job.description = "English is the working language. We sponsor visas."
+    ok, evidence, _ = validate_hard_requirements(job, seniority="both", **common)
+    assert not ok
+    assert "seniority_unclassified" in evidence.reasons_rejected
+
+    job.title = "Junior Software Engineer"
+    job.description = "English is the working language. We sponsor visas. 2 years of experience."
+    job.location = "Berlin, Germany"
+    job.remote_status = None
+    job.raw_payload = {"workplaceType": "Hybrid"}
+    common["region_work_arrangements"] = {"Europe": ["hybrid"], "Asia": ["remote"]}
+    ok, evidence, meta = validate_hard_requirements(job, seniority="non_senior", **common)
+    assert ok, evidence.reasons_rejected
+    assert meta["market"] == "Europe"
+    assert meta["work_arrangement"] == "hybrid"
+
+    asia_remote = DiscoveredJob(
+        title="Senior Software Engineer",
+        company="Acme",
+        external_job_id="asia-remote",
+        source="test",
+        location="Remote",
+        remote_status="remote",
+        raw_payload={"eligibleCountries": ["Japan"]},
+    )
+    africa_hybrid = DiscoveredJob(
+        title="Junior Software Engineer",
+        company="Acme",
+        external_job_id="africa-hybrid",
+        source="test",
+        location="Nairobi, Kenya",
+        raw_payload={"workplaceType": "Hybrid"},
+    )
+    selected = {
+        "Asia": ["remote"],
+        "Africa": ["hybrid"],
+    }
+    assert matches_region_work_arrangements(
+        asia_remote,
+        regions=["Asia", "Africa"],
+        work_arrangements=selected,
+    ) == (True, "Asia", "remote")
+    assert matches_region_work_arrangements(
+        africa_hybrid,
+        regions=["Asia", "Africa"],
+        work_arrangements=selected,
+    ) == (True, "Africa", "hybrid")
 
 
 def test_visa_block_patterns() -> None:
@@ -95,7 +314,7 @@ def test_validate_hard_requirements_happy_path() -> None:
         source_url="https://example.com/jobs/1",
         official_application_url="https://boards.greenhouse.io/acme/jobs/1",
         posted_at=now - timedelta(hours=3),
-        applicant_count=None,
+        applicant_count=20,
     )
     ok, evidence, meta = validate_hard_requirements(job, now=now, hours=24)
     assert ok, evidence.reasons_rejected
@@ -114,6 +333,7 @@ def test_validate_accepts_london_and_us_remote() -> None:
         source_url="https://careers.acme.example/jobs/uk-1",
         official_application_url="https://careers.acme.example/jobs/uk-1",
         posted_at=now - timedelta(hours=4),
+        applicant_count=20,
     )
     ok, evidence, meta = validate_hard_requirements(
         london, now=now, hours=24, regions=["Europe"]
@@ -168,6 +388,7 @@ def test_validate_rejects_us_onsite_extra_language_and_aggregator_link() -> None
         source_url="https://careers.harbor.example/jobs/sg-1",
         official_application_url="https://careers.harbor.example/jobs/sg-1",
         posted_at=now - timedelta(hours=2),
+        applicant_count=20,
     )
     ok, evidence, meta = validate_hard_requirements(
         singapore, now=now, hours=24, regions=["Asia"]

@@ -4,6 +4,12 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { ErrorState } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { endpoints, type RecentJobMatch } from "@/lib/endpoints";
+import type {
+  JobRegion,
+  JobSeniorityFilter,
+  JobWorkArrangement,
+  RegionWorkArrangements,
+} from "@/lib/types";
 import { useState } from "react";
 
 // With as const, the TypeScript compiler transforms it into
@@ -15,7 +21,21 @@ export const JOB_REGIONS = [
   "South America",
   "Asia",
   "Africa",
-] as const;
+] as const satisfies readonly JobRegion[];
+
+const WORK_ARRANGEMENTS: { value: JobWorkArrangement; label: string }[] = [
+  { value: "in_person", label: "In-person" },
+  { value: "remote", label: "Remote" },
+  { value: "hybrid", label: "Hybrid" },
+];
+
+const INITIAL_REGION_ARRANGEMENTS: RegionWorkArrangements = {
+  Europe: ["in_person", "remote", "hybrid"],
+  "North America": ["in_person", "remote", "hybrid"],
+  "South America": ["in_person", "remote", "hybrid"],
+  Asia: ["in_person", "remote", "hybrid"],
+  Africa: ["in_person", "remote", "hybrid"],
+};
 
 const columns: Column<RecentJobMatch>[] = [
   { key: "rank", header: "#", render: (row) => row.rank },
@@ -65,13 +85,16 @@ function formatPosted(value: string): string {
 }
 
 export function RecentMatchSearch() {
-  const [regions, setRegions] = useState<string[]>([...JOB_REGIONS]);
+  const [regions, setRegions] = useState<JobRegion[]>([...JOB_REGIONS]);
+  const [regionWorkArrangements, setRegionWorkArrangements] =
+    useState<RegionWorkArrangements>(INITIAL_REGION_ARRANGEMENTS);
+  const [seniority, setSeniority] = useState<JobSeniorityFilter>("non_senior");
   const [postedWithinHours, setPostedWithinHours] = useState(24);
   const [rows, setRows] = useState<RecentJobMatch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  function toggleRegion(region: string) {
+  function toggleRegion(region: JobRegion) {
     setRegions((current) =>
       current.includes(region)
         ? current.filter((item) => item !== region)
@@ -79,15 +102,35 @@ export function RecentMatchSearch() {
     );
   }
 
+  function toggleWorkArrangement(region: JobRegion, arrangement: JobWorkArrangement) {
+    setRegionWorkArrangements((current) => {
+      const selected = current[region];
+      return {
+        ...current,
+        [region]: selected.includes(arrangement)
+          ? selected.filter((value) => value !== arrangement)
+          : [...selected, arrangement],
+      };
+    });
+  }
+
   async function onSearch() {
-    if (regions.length === 0) {
-      setError("Choose at least one region.");
+    const activeRegions = JOB_REGIONS.filter(
+      (region) => regions.includes(region) && regionWorkArrangements[region].length > 0,
+    );
+    if (activeRegions.length === 0) {
+      setError("Select at least one continent and work arrangement.");
       return;
     }
     setPending(true);
     setError(null);
     try {
-      const matches = await endpoints.recentJobMatches(regions, postedWithinHours);
+      const matches = await endpoints.recentJobMatches(
+        activeRegions,
+        postedWithinHours,
+        seniority,
+        regionWorkArrangements,
+      );
       setRows(matches);
     } catch (err) {
       setRows(null);
@@ -142,21 +185,65 @@ export function RecentMatchSearch() {
       </fieldset>
       <fieldset className="mb-3">
         <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
-          Region
+          Seniority
+        </legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {([
+            ["non_senior", "Non-senior"],
+            ["senior", "Senior"],
+            ["both", "Both"],
+          ] as const).map(([value, label]) => (
+            <label key={value} className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="job-seniority"
+                value={value}
+                checked={seniority === value}
+                onChange={() => setSeniority(value)}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          Jobs with unclear seniority are excluded from all three choices.
+        </p>
+      </fieldset>
+      <fieldset className="mb-3">
+        <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
+          Continents and work arrangements
         </legend>
         <p className="mt-1 text-xs text-[var(--muted)]">
-          Jobs can match any selected region. Uncheck regions you do not want to search.
+          Select a continent and the work arrangements you will consider there. A continent with no
+          arrangement selected is excluded.
         </p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {JOB_REGIONS.map((region) => (
-            <label key={region} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={regions.includes(region)}
-                onChange={() => toggleRegion(region)}
-              />
-              {region}
-            </label>
+            <fieldset key={region} className="rounded-md border border-[var(--border)] p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={regions.includes(region)}
+                  aria-label={`Include ${region}`}
+                  onChange={() => toggleRegion(region)}
+                />
+                {region}
+              </label>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                {WORK_ARRANGEMENTS.map((arrangement) => (
+                  <label key={arrangement.value} className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      aria-label={`${region} ${arrangement.label}`}
+                      checked={regionWorkArrangements[region].includes(arrangement.value)}
+                      disabled={!regions.includes(region)}
+                      onChange={() => toggleWorkArrangement(region, arrangement.value)}
+                    />
+                    {arrangement.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           ))}
         </div>
       </fieldset>
@@ -164,7 +251,7 @@ export function RecentMatchSearch() {
         type="button"
         className="btn-primary"
         onClick={onSearch}
-        disabled={pending || regions.length === 0}
+        disabled={pending || !JOB_REGIONS.some((region) => regions.includes(region) && regionWorkArrangements[region].length > 0)}
         data-testid="recent-match-search"
       >
         {pending ? "Searching…" : "Find matching jobs"}

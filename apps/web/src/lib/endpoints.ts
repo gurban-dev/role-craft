@@ -15,6 +15,9 @@ import type {
   Run,
   Settings,
   WorkerInfo,
+  JobRegion,
+  JobSeniorityFilter,
+  RegionWorkArrangements,
 } from "./types";
 
 export type RecentJobMatch = {
@@ -31,13 +34,20 @@ export type RecentJobMatch = {
 
 export const endpoints = {
   dashboardStats: () => apiGet<DashboardStats>("/api/dashboard/stats"),
-  recentJobMatches: (regions: string[], postedWithinHours: number) =>
+  recentJobMatches: (
+    regions: JobRegion[],
+    postedWithinHours: number,
+    seniority: JobSeniorityFilter,
+    regionWorkArrangements: RegionWorkArrangements,
+  ) =>
     apiPost<RecentJobMatch[]>("/api/jobs/eea-search", {
       query: "software engineer",
       limit: 10,
       sources: ["linkedin_apify"],
       regions,
       posted_within_hours: postedWithinHours,
+      seniority,
+      region_work_arrangements: regionWorkArrangements,
     }),
   jobs: (query = "") =>
     apiGet<Paginated<Job> | Job[]>(`/api/jobs${query ? `?${query}` : ""}`),

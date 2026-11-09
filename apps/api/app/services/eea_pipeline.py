@@ -9,11 +9,14 @@ from typing import Any
 from app.integrations.job_sources.base import DiscoveredJob
 from app.services.eea_filters import (
     applicant_count_ok,
+    classify_job_seniority,
     classify_visa_sponsorship,
     company_website_apply_url,
     detect_country_code,
     english_required_or_implied,
     match_region,
+    matches_region_work_arrangements,
+    normalize_regions,
     posted_within_hours,
     requires_non_english,
     title_looks_preferred_engineering,
@@ -54,6 +57,8 @@ def validate_hard_requirements(
     now: datetime | None = None,
     hours: int = 24,
     regions: list[str] | None = None,
+    seniority: str | None = None,
+    region_work_arrangements: dict[str, list[str]] | None = None,
 ) -> tuple[bool, FilterEvidence, dict[str, Any]]:
     """Return (ok, evidence, enriched metadata). Never invent missing hard facts."""
     now = now or datetime.now(UTC)
@@ -64,17 +69,36 @@ def validate_hard_requirements(
     )
     meta: dict[str, Any] = {}
 
-    country = item.country_code or detect_country_code(item.location, item.description)
+    country = item.country_code or detect_country_code(item.location)
     meta["country_code"] = country
-    market_parts = (item.location, item.remote_status)
-    region = match_region(*market_parts, regions=regions)
-    if region:
-        evidence.location = f"{region}:{country}:{item.location}"
-        meta["market"] = region
+    if region_work_arrangements is not None:
+        selected_regions = [
+            region
+            for region in normalize_regions(regions)
+            if region_work_arrangements.get(region)
+        ]
+        matches, region, arrangement = matches_region_work_arrangements(
+            item,
+            regions=selected_regions,
+            work_arrangements=region_work_arrangements,
+        )
+        meta["work_arrangement"] = arrangement
+        if matches and region:
+            evidence.location = f"{region}:{country}:{item.location}"
+            meta["market"] = region
+        else:
+            evidence.reasons_rejected.append("region_or_work_arrangement_unverified")
+            evidence.location = f"rejected:{item.location}:{arrangement}"
+            meta["market"] = None
     else:
-        evidence.reasons_rejected.append("location_not_in_scope")
-        evidence.location = f"rejected:{item.location}"
-        meta["market"] = None
+        region = match_region(item.location, item.remote_status, regions=regions)
+        if region:
+            evidence.location = f"{region}:{country}:{item.location}"
+            meta["market"] = region
+        else:
+            evidence.reasons_rejected.append("location_not_in_scope")
+            evidence.location = f"rejected:{item.location}"
+            meta["market"] = None
 
     if requires_non_english(item.description, item.title) or not english_required_or_implied(
         item.description, item.title
@@ -84,16 +108,24 @@ def validate_hard_requirements(
     else:
         evidence.english = "english_only"
 
-    if title_looks_senior(item.title, item.description):
-        evidence.reasons_rejected.append("seniority_too_high")
-        evidence.seniority = "senior_or_lead"
-    elif not title_looks_preferred_engineering(item.title) and not any(
+    if not title_looks_preferred_engineering(item.title) and not any(
         k in item.title.lower() for k in ("engineer", "developer", "software")
     ):
         evidence.reasons_rejected.append("not_software_engineering")
         evidence.seniority = "non_eng"
     else:
-        evidence.seniority = "ok"
+        classification = classify_job_seniority(item)
+        if seniority is not None:
+            evidence.seniority = classification
+            if classification == "unknown":
+                evidence.reasons_rejected.append("seniority_unclassified")
+            elif seniority != "both" and classification != seniority:
+                evidence.reasons_rejected.append("seniority_filter_mismatch")
+        elif title_looks_senior(item.title, item.description):
+            evidence.reasons_rejected.append("seniority_too_high")
+            evidence.seniority = "senior_or_lead"
+        else:
+            evidence.seniority = "ok"
 
     visa = classify_visa_sponsorship(item.description)
     meta["visa_sponsorship"] = visa
@@ -192,9 +224,10 @@ def dedupe_discovered(jobs: list[DiscoveredJob]) -> list[DiscoveredJob]:
 def _merge_prefer_authoritative(a: DiscoveredJob, b: DiscoveredJob) -> DiscoveredJob:
     """Keep most authoritative/recent fields across duplicate sources."""
     primary, secondary = a, b
-    if _is_linkedin(b.source) and not _is_linkedin(a.source):
-        primary, secondary = b, a
-    elif a.posted_at and b.posted_at and b.posted_at > a.posted_at:
+    if (
+        _is_linkedin(b.source) and not _is_linkedin(a.source)
+        or a.posted_at and b.posted_at and b.posted_at > a.posted_at
+    ):
         primary, secondary = b, a
 
     def pick(attr: str) -> Any:

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class ORMModel(BaseModel):
@@ -149,6 +149,8 @@ JobRegion = Literal[
     "Asia",
     "Africa",
 ]
+JobWorkArrangement = Literal["in_person", "remote", "hybrid"]
+JobSeniorityFilter = Literal["non_senior", "senior", "both"]
 
 
 class EEAJobSearchRequest(BaseModel):
@@ -161,6 +163,17 @@ class EEAJobSearchRequest(BaseModel):
         max_length=5,
     )
     posted_within_hours: Literal[24, 72, 168, 720] = 24
+    # Optional for older clients; the dashboard always sends this explicitly.
+    seniority: JobSeniorityFilter | None = None
+    region_work_arrangements: dict[JobRegion, list[JobWorkArrangement]] | None = None
+
+    @model_validator(mode="after")
+    def require_active_region_arrangement(self) -> EEAJobSearchRequest:
+        if self.region_work_arrangements is not None and not any(
+            self.region_work_arrangements.get(region) for region in self.regions
+        ):
+            raise ValueError("Select at least one work arrangement in a selected continent.")
+        return self
 
 
 class EEAJobRow(BaseModel):

@@ -108,6 +108,16 @@ body {
   background: color-mix(in srgb, var(--accent) 88%, #000);
 }
 
+.resume-upload-button {
+  transition: background-color 120ms ease, border-color 120ms ease, opacity 120ms ease,
+    box-shadow 120ms ease, transform 120ms ease;
+}
+
+.resume-upload-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgb(0 0 0 / 16%);
+}
+
 .btn-secondary {
   background: var(--surface);
   border-color: var(--border);

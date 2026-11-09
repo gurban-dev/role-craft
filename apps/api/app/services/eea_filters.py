@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 # ISO-ish country names/codes commonly seen in job posts (EEA + Norway/Iceland/Liechtenstein)
 EEA_COUNTRIES: dict[str, str] = {
@@ -251,6 +252,319 @@ _REGION_MARKERS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Central country-to-continent mapping. Transcontinental countries use one
+# canonical region (Russia -> Europe; Turkey/Kazakhstan -> Asia) for filtering.
+_CONTINENT_COUNTRY_CODES: dict[str, set[str]] = {
+    "Europe": {
+        "AL", "AD", "AT", "BY", "BE", "BA", "BG", "HR", "CY", "CZ", "DK", "EE", "FI",
+        "FR", "DE", "GR", "HU", "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "MD",
+        "MC", "ME", "NL", "MK", "NO", "PL", "PT", "RO", "RU", "SM", "RS", "SK", "SI",
+        "ES", "SE", "CH", "UA", "GB", "VA", "XK", "GG", "IM", "JE", "FO", "GI",
+    },
+    "North America": {
+        "US", "CA", "MX", "GL", "BM", "PM", "BZ", "CR", "SV", "GT", "HN", "NI", "PA",
+        "CU", "JM", "HT", "DO", "PR", "BS", "BB", "TT", "GD", "LC", "VC", "AG", "DM",
+        "KN", "AI", "AW", "CW", "SX", "BQ", "KY", "TC", "VG", "VI", "GP", "MQ", "BL", "MF",
+    },
+    "South America": {
+        "AR", "BO", "BR", "CL", "CO", "EC", "FK", "GF", "GY", "PE", "PY", "SR", "UY", "VE",
+    },
+    "Asia": {
+        "AF", "AM", "AZ", "BH", "BD", "BT", "BN", "KH", "CN", "CX", "CC", "GE", "HK", "IN",
+        "ID", "IR", "IQ", "IL", "JP", "JO", "KZ", "KP", "KR", "KW", "KG", "LA", "LB", "MO",
+        "MY", "MV", "MN", "MM", "NP", "OM", "PK", "PS", "PH", "QA", "SA", "SG", "LK", "SY",
+        "TW", "TJ", "TH", "TL", "TR", "TM", "AE", "UZ", "VN", "YE",
+    },
+    "Africa": {
+        "DZ", "AO", "BJ", "BW", "BF", "BI", "CV", "CM", "CF", "TD", "KM", "CG", "CD", "CI",
+        "DJ", "EG", "GQ", "ER", "SZ", "ET", "GA", "GM", "GH", "GN", "GW", "KE", "LS", "LR",
+        "LY", "MG", "MW", "ML", "MR", "MU", "YT", "MA", "MZ", "NA", "NE", "NG", "RE", "RW",
+        "SH", "ST", "SN", "SC", "SL", "SO", "ZA", "SS", "SD", "TZ", "TG", "TN", "UG", "EH",
+        "ZM", "ZW",
+    },
+}
+
+_CONTINENT_COUNTRY_NAMES: dict[str, tuple[str, ...]] = {
+    "Europe": (
+        "albania", "andorra", "austria", "belarus", "belgium", "bosnia and herzegovina",
+        "bulgaria", "croatia", "cyprus", "czechia", "czech republic", "denmark", "estonia",
+        "finland", "france", "germany", "greece", "hungary", "iceland", "ireland", "italy",
+        "kosovo", "latvia", "liechtenstein", "lithuania", "luxembourg", "malta", "moldova",
+        "monaco", "montenegro", "netherlands", "north macedonia", "norway", "poland",
+        "portugal", "romania", "san marino", "serbia", "slovakia", "slovenia", "spain",
+        "sweden", "switzerland", "ukraine", "united kingdom", "great britain", "england",
+        "scotland", "wales", "vatican city", "russia",
+    ),
+    "North America": (
+        "united states", "united states of america", "usa", "canada", "mexico", "greenland",
+        "belize", "costa rica", "el salvador", "guatemala", "honduras", "nicaragua", "panama",
+        "antigua and barbuda", "bahamas", "barbados", "cuba", "dominica", "dominican republic",
+        "grenada", "haiti", "jamaica", "saint kitts and nevis", "saint lucia",
+        "saint vincent and the grenadines", "trinidad and tobago", "puerto rico", "bermuda",
+    ),
+    "South America": (
+        "argentina", "bolivia", "brazil", "brasil", "chile", "colombia", "ecuador", "guyana",
+        "paraguay", "peru", "suriname", "uruguay", "venezuela", "french guiana",
+    ),
+    "Asia": (
+        "afghanistan", "armenia", "azerbaijan", "bahrain", "bangladesh", "bhutan", "brunei",
+        "cambodia", "china", "hong kong", "india", "indonesia", "iran", "iraq",
+        "israel", "japan", "jordan", "kazakhstan", "kuwait", "kyrgyzstan", "laos", "lebanon",
+        "malaysia", "maldives", "mongolia", "myanmar", "nepal", "north korea", "oman",
+        "pakistan", "palestine", "philippines", "qatar", "saudi arabia", "singapore", "south korea",
+        "sri lanka", "syria", "taiwan", "tajikistan", "thailand", "timor-leste", "turkey",
+        "turkmenistan", "united arab emirates", "uzbekistan", "vietnam", "yemen", "macau",
+    ),
+    "Africa": (
+        "algeria", "angola", "benin", "botswana", "burkina faso", "burundi", "cape verde",
+        "cameroon", "central african republic", "chad", "comoros", "republic of the congo",
+        "democratic republic of the congo", "ivory coast", "cote d'ivoire", "djibouti", "egypt",
+        "equatorial guinea", "eritrea", "eswatini", "ethiopia", "gabon", "gambia", "ghana",
+        "guinea", "guinea-bissau", "kenya", "lesotho", "liberia", "libya", "madagascar",
+        "malawi", "mali", "mauritania", "mauritius", "morocco", "mozambique", "namibia",
+        "niger", "nigeria", "rwanda", "senegal", "seychelles", "sierra leone", "somalia",
+        "south africa", "south sudan", "sudan", "tanzania", "togo", "tunisia", "uganda",
+        "western sahara", "zambia", "zimbabwe",
+    ),
+}
+
+_CITY_REGION_MARKERS: dict[str, tuple[str, ...]] = {
+    "Europe": tuple(EUROPE_EXTRA) + (
+        "amsterdam", "berlin", "paris", "madrid", "rome", "dublin", "zurich", "stockholm",
+        "warsaw", "lisbon",
+    ),
+    "North America": _REGION_MARKERS["North America"],
+    "South America": _REGION_MARKERS["South America"],
+    "Asia": _REGION_MARKERS["Asia"],
+    "Africa": _REGION_MARKERS["Africa"],
+}
+
+_SENIORITY_CUES = (
+    r"\bsenior(?:-level)?\b", r"\bsr\.?\b", r"\bstaff(?:-level)?\b",
+    r"\bprincipal\b", r"\bdistinguished\b", r"\bdirector\b", r"\bhead of\b",
+    r"\bvice president\b", r"\bvp\b", r"\bchief\b", r"\bmanager\b",
+)
+_NON_SENIORITY_CUES = (
+    r"\bjunior(?:-level)?\b", r"\bentry[ -]level\b", r"\bgraduate\b",
+    r"\bassociate\b", r"\bmid[ -]level\b", r"\bearly[ -]career\b", r"\bintern\b",
+)
+
+
+def classify_job_seniority(item: Any) -> str:
+    """Classify as senior/non_senior; ambiguous or conflicting evidence is unknown."""
+    title = str(item.title or "")
+    description = " ".join(
+        [str(item.description or ""), *(str(value) for value in (item.requirements or [])),
+         *(str(value) for value in (item.responsibilities or []))]
+    )
+    raw = item.raw_payload or {}
+    label = str(
+        item.seniority_label
+        or raw.get("seniorityLevel")
+        or raw.get("seniority_label")
+        or raw.get("experienceLevel")
+        or raw.get("seniority")
+        or ""
+    )
+    title_lower = title.lower()
+    text = f"{title} {description}".lower()
+    label_lower = label.lower()
+    senior = any(re.search(pattern, label_lower) for pattern in _SENIORITY_CUES)
+    non_senior = any(re.search(pattern, label_lower) for pattern in _NON_SENIORITY_CUES)
+    senior = senior or any(re.search(pattern, title_lower) for pattern in _SENIORITY_CUES)
+    non_senior = non_senior or any(
+        re.search(pattern, title_lower) for pattern in _NON_SENIORITY_CUES
+    )
+    if re.search(
+        r"\b(?:senior|staff|principal|distinguished)[ -](?:level|role|position)\b"
+        r"|\b(?:senior|staff|principal)\s+(?:software|backend|front[ -]?end|full[ -]?stack|"
+        r"engineering|engineer|developer)\b",
+        description.lower(),
+    ):
+        senior = True
+    if re.search(
+        r"\b(?:junior|entry[ -]level|graduate|mid[ -]level|early[ -]career)"
+        r"\s+(?:role|position|engineer|developer|candidate)\b",
+        description.lower(),
+    ):
+        non_senior = True
+
+    # Lead is a senior indicator in role titles or explicit people leadership,
+    # not when the description merely says to lead a project or task.
+    if re.search(r"\b(?:lead|team lead|tech lead|technical lead)\b", title_lower) and not re.search(
+        r"\blead generation\b", title_lower
+    ):
+        senior = True
+    if re.search(
+        r"\b(manage|managing|managed)\s+(?:a|the|our)?\s*(?:team|group|direct reports)\b"
+        r"|\bdirect reports\b|\bpeople management\b|\blead(?:ing)?\s+(?:a|the|our)\s+"
+        r"(?:team|group|engineering organization)\b",
+        description.lower(),
+    ):
+        senior = True
+    if re.search(r"\bmid[ -]senior\b", label_lower):
+        senior = True
+
+    years = _required_experience_years(text)
+    if years is not None:
+        low, high = years
+        if low >= 7:
+            senior = True
+        elif high <= 3:
+            non_senior = True
+
+    if senior == non_senior:
+        return "unknown"
+    return "senior" if senior else "non_senior"
+
+
+def _required_experience_years(text: str) -> tuple[int, int] | None:
+    ranges = re.findall(
+        r"\b(\d+)\s*(?:-|to)\s*(\d+)\s*\+?\s*years?\b", text.lower()
+    )
+    if ranges:
+        return min(int(low) for low, _ in ranges), max(int(high) for _, high in ranges)
+    matches = re.findall(
+        r"\b(\d+)\s*\+?\s*years?\s+(?:of\s+)?(?:professional\s+|relevant\s+|industry\s+)?experience\b",
+        text.lower(),
+    )
+    at_least = re.findall(r"\bat least\s+(\d+)\s+years?\b", text.lower())
+    values = [int(value) for value in matches + at_least]
+    if not values:
+        return None
+    return min(values), max(values)
+
+
+def classify_work_arrangement(item: Any) -> str:
+    """Use structured work-mode fields first; unknown/contradictory text stays unknown."""
+    raw = item.raw_payload or {}
+    for key in (
+        "workplaceType", "workplace_type", "workArrangement", "work_arrangement",
+        "remoteStatus", "remote_status", "workplace",
+    ):
+        value = raw.get(key)
+        classified = _normalize_work_arrangement(value)
+        if classified:
+            return classified
+    classified = _normalize_work_arrangement(item.remote_status)
+    if classified:
+        return classified
+    text = f"{item.title or ''} {item.description or ''} {item.location or ''}".lower()
+    hybrid = bool(re.search(r"\bhybrid\b|\b\d+\s+days?\s+(?:in|at)\s+(?:the\s+)?office\b", text))
+    remote = bool(re.search(r"\bremote\b|\bwork from home\b|\bwork-from-home\b", text))
+    in_person = bool(re.search(r"\bon[ -]?site\b|\bin[ -]person\b|\boffice[ -]based\b", text))
+    if hybrid:
+        if re.search(r"\b(?:remote|hybrid|on[ -]?site|in[ -]person)\s+or\s+"
+                     r"(?:remote|hybrid|on[ -]?site|in[ -]person)\b", text):
+            return "unknown"
+        return "hybrid"
+    modes = [mode for mode, found in (("remote", remote), ("in_person", in_person)) if found]
+    return modes[0] if len(modes) == 1 else "unknown"
+
+
+def _normalize_work_arrangement(value: Any) -> str | None:
+    text = re.sub(r"[_-]+", " ", str(value or "").lower()).strip()
+    if not text:
+        return None
+    if re.search(r"\bhybrid\b", text):
+        return "hybrid"
+    if re.search(r"\bremote\b|work from home", text):
+        return "remote"
+    if re.search(r"\bon ?site\b|in person|office based", text):
+        return "in_person"
+    return None
+
+
+def _continents_for_place(value: Any) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, list | tuple | set):
+        regions: set[str] = set()
+        for part in value:
+            regions.update(_continents_for_place(part))
+        return regions
+    if isinstance(value, dict):
+        return _continents_for_place(
+            value.get("countryCode") or value.get("country_code") or value.get("country")
+            or value.get("region") or value.get("location") or value.get("name")
+        )
+    source_text = str(value).strip()
+    text = re.sub(r"[_-]+", " ", source_text.lower()).strip()
+    if not text:
+        return set()
+    regions = {
+        region
+        for region in JOB_REGIONS
+        if re.search(rf"\b{re.escape(region.lower())}\b", text)
+    }
+    code_tokens: set[str] = set()
+    if re.fullmatch(r"[A-Za-z]{2}", source_text):
+        code_tokens.add(source_text.upper())
+    code_tokens.update(re.findall(r"(?:,|\(|\s-\s)\s*([A-Z]{2})\b", source_text))
+    for region, codes in _CONTINENT_COUNTRY_CODES.items():
+        if code_tokens & codes:
+            regions.add(region)
+        if any(
+            re.search(rf"\b{re.escape(name)}\b", text)
+            for name in _CONTINENT_COUNTRY_NAMES[region]
+        ):
+            regions.add(region)
+        if any(
+            re.search(rf"\b{re.escape(marker)}\b", text)
+            for marker in _CITY_REGION_MARKERS[region]
+        ):
+            regions.add(region)
+    if re.search(r"\bemea\b", text):
+        regions.update(("Europe", "Africa", "Asia"))
+    if re.search(r"\bworldwide\b|\bglobal(?:ly)?\b|\banywhere in the world\b", text):
+        regions.update(JOB_REGIONS)
+    return regions
+
+
+def job_eligible_regions(item: Any, arrangement: str) -> set[str]:
+    """Resolve actual job geography, never using employer name/headquarters."""
+    raw = item.raw_payload or {}
+    if arrangement == "remote":
+        for key in (
+            "eligibleCountries", "eligible_countries", "remoteCountries", "remote_countries",
+            "workplaceCountries", "workplace_countries", "remoteLocations", "remote_locations",
+            "workLocations", "work_locations", "locationRestrictions",
+        ):
+            if raw.get(key):
+                return _continents_for_place(raw[key])
+        explicit_remote = re.findall(
+            r"\bremote\s+(?:from|in|across|throughout|within)\s+([A-Za-z][A-Za-z ,/&-]{1,50})",
+            str(item.description or ""),
+            flags=re.IGNORECASE,
+        )
+        for scope in explicit_remote:
+            regions = _continents_for_place(scope)
+            if regions:
+                return regions
+        location = str(item.location or "")
+        if re.search(r"\bremote\b", location.lower()) and not _continents_for_place(location):
+            return set()
+        return _continents_for_place(item.country_code) or _continents_for_place(location)
+    # On-site and hybrid roles are tied to their work site, which is the job
+    # location field, not a company address mentioned in the description.
+    return _continents_for_place(item.country_code) or _continents_for_place(item.location)
+
+
+def matches_region_work_arrangements(
+    item: Any,
+    *,
+    regions: list[str],
+    work_arrangements: dict[str, list[str]],
+) -> tuple[bool, str | None, str]:
+    arrangement = classify_work_arrangement(item)
+    if arrangement == "unknown":
+        return False, None, arrangement
+    eligible = job_eligible_regions(item, arrangement)
+    for region in regions:
+        if arrangement in work_arrangements.get(region, []) and region in eligible:
+            return True, region, arrangement
+    return False, None, arrangement
+
 AGGREGATOR_HOSTS = (
     "linkedin.com",
     "indeed.com",
@@ -300,9 +614,7 @@ def is_europe_location(location: str | None, description: str = "") -> bool:
     for name in sorted(EUROPE_EXTRA, key=len, reverse=True):
         if re.search(rf"\b{re.escape(name)}\b", blob):
             return True
-    if re.search(r"\buk\b", blob) and "ukraine" not in blob:
-        return True
-    return False
+    return bool(re.search(r"\buk\b", blob) and "ukraine" not in blob)
 
 
 def normalize_regions(regions: list[str] | None) -> list[str]:
@@ -354,10 +666,10 @@ def title_looks_senior(title: str, description: str = "") -> bool:
         if re.search(pat, title.lower()):
             return True
     # Leadership expectations in JD with non-senior title still count
-    if re.search(r"manage(s|ing)?\s+(a\s+)?team|direct reports|people management", t):
-        if not re.search(r"junior|associate|intern", title.lower()):
-            return True
-    return False
+    return bool(
+        re.search(r"manage(s|ing)?\s+(a\s+)?team|direct reports|people management", t)
+        and not re.search(r"junior|associate|intern", title.lower())
+    )
 
 
 def title_looks_preferred_engineering(title: str) -> bool:
@@ -376,13 +688,18 @@ def english_required_or_implied(description: str, title: str = "") -> bool:
         return True
     # Many EEA eng postings are English-first without stating it; allow unknown as pass
     # Spec: require English as working language — if explicitly another language only, fail
-    if re.search(r"dutch only|german only|french only|must speak (dutch|german|french|swedish)", blob):
-        if "english" not in blob:
-            return False
-    return True
+    return not (
+        re.search(
+            r"dutch only|german only|french only|must speak (dutch|german|french|swedish)",
+            blob,
+        )
+        and "english" not in blob
+    )
 
 
-def posted_within_hours(posted_at: datetime | None, hours: int = 24, *, now: datetime | None = None) -> bool:
+def posted_within_hours(
+    posted_at: datetime | None, hours: int = 24, *, now: datetime | None = None
+) -> bool:
     if posted_at is None:
         return False
     now = now or datetime.now(UTC)
@@ -401,6 +718,8 @@ def applicant_count_ok(count: int | None, *, linkedin_source: bool) -> bool:
 def classify_visa_sponsorship(description: str) -> str:
     if visa_sponsorship_blocked(description):
         return "blocked"
-    if re.search(r"visa sponsorship|work permit|relocation support|we sponsor", description.lower()):
+    if re.search(
+        r"visa sponsorship|work permit|relocation support|we sponsor", description.lower()
+    ):
         return "available"
     return "unknown"

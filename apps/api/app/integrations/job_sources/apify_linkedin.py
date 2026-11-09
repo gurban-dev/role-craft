@@ -45,7 +45,7 @@ def linkedin_search_urls(
 def _parse_posted_at(raw: Any) -> datetime | None:
     if raw is None:
         return None
-    if isinstance(raw, (int, float)):
+    if isinstance(raw, int | float):
         # epoch ms or s
         ts = float(raw)
         if ts > 1e12:
@@ -106,6 +106,23 @@ def _parse_applicants(raw: Any) -> int | None:
     return int(digits)
 
 
+def _normalize_location(raw: Any) -> str | None:
+    if isinstance(raw, str):
+        return raw.strip() or None
+    if isinstance(raw, dict):
+        preferred_keys = (
+            "city", "state", "region", "country", "countryCode", "country_code",
+            "displayName", "name", "location",
+        )
+        values = [raw[key] for key in preferred_keys if raw.get(key)]
+        if not values:
+            values = list(raw.values())
+        return ", ".join(str(value).strip() for value in values if value) or None
+    if isinstance(raw, list | tuple):
+        return ", ".join(str(value).strip() for value in raw if value) or None
+    return str(raw).strip() if raw else None
+
+
 class ApifyLinkedInJobsSource:
     name = "linkedin_apify"
 
@@ -156,7 +173,12 @@ class ApifyLinkedInJobsSource:
                 continue
             title = item.get("title") or item.get("jobTitle") or ""
             company = item.get("companyName") or item.get("company") or "Unknown"
-            job_url = item.get("jobUrl") or item.get("url") or item.get("link") or item.get("jobLink")
+            job_url = (
+                item.get("jobUrl")
+                or item.get("url")
+                or item.get("link")
+                or item.get("jobLink")
+            )
             job_id = str(
                 item.get("jobId")
                 or item.get("id")
@@ -164,7 +186,7 @@ class ApifyLinkedInJobsSource:
                 or job_url
                 or f"{company}-{title}"
             )
-            location = item.get("location") or item.get("jobLocation")
+            location = _normalize_location(item.get("location") or item.get("jobLocation"))
             description = (
                 item.get("description")
                 or item.get("descriptionText")
@@ -201,9 +223,14 @@ class ApifyLinkedInJobsSource:
                     or job_url,
                     posted_at=posted_at,
                     applicant_count=applicants,
-                    country_code=detect_country_code(location, description),
+                    country_code=detect_country_code(location),
                     employment_type=item.get("employmentType"),
-                    seniority_label=item.get("seniorityLevel") or item.get("experienceLevel"),
+                    seniority_label=(
+                        item.get("seniorityLevel")
+                        or item.get("seniority_label")
+                        or item.get("experienceLevel")
+                        or item.get("seniority")
+                    ),
                     technologies=list(item.get("skills") or []),
                     raw_payload=item,
                 )

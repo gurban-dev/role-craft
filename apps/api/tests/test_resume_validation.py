@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
 
+from app.core.config import Settings
 from app.core.exceptions import ValidationAppError
 from app.integrations.llm.schemas import ResumeChanges
-from app.models import CandidateProfile
+from app.models import CandidateProfile, Resume, User
 from app.services.resume_service import ResumeService
 
 
@@ -76,3 +78,43 @@ def test_score_quality_increases_with_content() -> None:
         job,
     )
     assert high > low
+
+
+def test_extracts_plain_text_resume() -> None:
+    assert ResumeService._extract_resume_text(".txt", b"Python Engineer") == "Python Engineer"
+
+
+def test_extracts_legacy_doc_using_antiword() -> None:
+    with patch("app.services.resume_service.subprocess.run") as run:
+        run.return_value.stdout = b"Python Engineer"
+        text = ResumeService._extract_resume_text(".doc", b"legacy doc bytes")
+
+    assert text == "Python Engineer"
+    assert run.call_args.args[0][0] == "antiword"
+
+
+@pytest.mark.asyncio
+async def test_upload_extracts_resume_and_stores_original() -> None:
+    user = User(id=uuid4(), email="resume@example.com", name="Resume User")
+    profile = CandidateProfile(id=uuid4(), user_id=user.id, skills=[])
+    db = Mock()
+    db.execute = AsyncMock(return_value=Mock(scalar_one_or_none=Mock(return_value=0)))
+    db.flush = AsyncMock()
+    db.add = Mock()
+    svc = ResumeService(db, Settings(app_env="test", open_router_token=None))
+    svc.users.get_profile = AsyncMock(return_value=profile)
+    resume_bytes = (
+        b"Senior Python Engineer\n"
+        b"8 years of professional experience\n"
+        b"Python, Django, PostgreSQL"
+    )
+
+    uploaded = await svc.upload_original(
+        user, filename="resume.txt", content=resume_bytes
+    )
+
+    assert uploaded.original_file == resume_bytes
+    assert uploaded.content["extracted_profile"]["years_of_experience"] == 8
+    assert "Python" in profile.skills
+    assert profile.seniority_level == "senior"
+    assert any(isinstance(call.args[0], Resume) for call in db.add.call_args_list)

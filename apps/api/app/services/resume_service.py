@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import io
 import re
+import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -35,6 +37,7 @@ logger = get_logger(__name__)
 MAX_RESUME_UPLOAD_BYTES = 10 * 1024 * 1024
 _RESUME_CONTENT_TYPES = {
     ".pdf": "application/pdf",
+    ".doc": "application/msword",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".txt": "text/plain; charset=utf-8",
 }
@@ -69,6 +72,8 @@ class ResumeService:
             raise ValidationAppError("Upload a PDF, DOCX, or plain text resume.")
         if suffix == ".pdf" and b"%PDF-" not in content[:1024]:
             raise ValidationAppError("The uploaded file is not a valid PDF.")
+        if suffix == ".doc" and not content.startswith(bytes.fromhex("D0CF11E0A1B11AE1")):
+            raise ValidationAppError("The uploaded file is not a valid DOC document.")
         if suffix == ".docx":
             try:
                 with zipfile.ZipFile(io.BytesIO(content)) as document:
@@ -144,6 +149,17 @@ class ResumeService:
                 if reader.is_encrypted:
                     raise ValidationAppError("Password-protected PDF resumes are not supported.")
                 return "\n".join(page.extract_text() or "" for page in reader.pages)
+            if suffix == ".doc":
+                with tempfile.NamedTemporaryFile(suffix=".doc") as source:
+                    source.write(content)
+                    source.flush()
+                    converted = subprocess.run(
+                        ["antiword", source.name],
+                        capture_output=True,
+                        check=True,
+                        timeout=30,
+                    )
+                return converted.stdout.decode("utf-8", errors="replace")
             with zipfile.ZipFile(io.BytesIO(content)) as document:
                 xml = document.read("word/document.xml")
             root = ElementTree.fromstring(xml)

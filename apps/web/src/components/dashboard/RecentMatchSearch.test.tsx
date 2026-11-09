@@ -16,7 +16,7 @@ describe("RecentMatchSearch", () => {
     vi.mocked(endpoints.recentJobMatches).mockReset();
   });
 
-  it("shows only the scored job table after search", async () => {
+  it("sends independent region arrangements and seniority to the search API", async () => {
     vi.mocked(endpoints.recentJobMatches).mockResolvedValue([
       {
         rank: 1,
@@ -30,9 +30,27 @@ describe("RecentMatchSearch", () => {
     ]);
 
     render(<RecentMatchSearch />);
-    await userEvent.click(screen.getByRole("checkbox", { name: "Asia" }));
+    for (const region of ["North America", "South America", "Africa"]) {
+      await userEvent.click(screen.getByRole("checkbox", { name: `Include ${region}` }));
+    }
+    for (const arrangement of ["In-person", "Hybrid"]) {
+      await userEvent.click(screen.getByRole("checkbox", { name: `Europe ${arrangement}` }));
+      await userEvent.click(screen.getByRole("checkbox", { name: `Asia ${arrangement}` }));
+    }
+    await userEvent.click(screen.getByRole("radio", { name: "Senior" }));
     await userEvent.click(screen.getByTestId("recent-match-search"));
-    expect(endpoints.recentJobMatches).toHaveBeenCalledWith(["Europe", "Asia"]);
+    expect(endpoints.recentJobMatches).toHaveBeenCalledWith(
+      ["Europe", "Asia"],
+      24,
+      "senior",
+      {
+        Europe: ["remote"],
+        "North America": ["in_person", "remote", "hybrid"],
+        "South America": ["in_person", "remote", "hybrid"],
+        Asia: ["remote"],
+        Africa: ["in_person", "remote", "hybrid"],
+      },
+    );
 
     expect(await screen.findByTestId("recent-match-table")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "#" })).toBeInTheDocument();
