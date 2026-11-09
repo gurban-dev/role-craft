@@ -16,7 +16,6 @@ import type {
   Settings,
   WorkerInfo,
   JobRegion,
-  JobSeniorityFilter,
   RegionWorkArrangements,
 } from "./types";
 
@@ -37,7 +36,8 @@ export const endpoints = {
   recentJobMatches: (
     regions: JobRegion[],
     postedWithinHours: number,
-    seniority: JobSeniorityFilter,
+    includeNonSenior: boolean,
+    includeSenior: boolean,
     regionWorkArrangements: RegionWorkArrangements,
   ) =>
     apiPost<RecentJobMatch[]>("/api/jobs/eea-search", {
@@ -46,7 +46,8 @@ export const endpoints = {
       sources: ["linkedin_apify"],
       regions,
       posted_within_hours: postedWithinHours,
-      seniority,
+      include_non_senior: includeNonSenior,
+      include_senior: includeSenior,
       region_work_arrangements: regionWorkArrangements,
     }),
   jobs: (query = "") =>

@@ -6,7 +6,6 @@ import { ApiError } from "@/lib/api";
 import { endpoints, type RecentJobMatch } from "@/lib/endpoints";
 import type {
   JobRegion,
-  JobSeniorityFilter,
   JobWorkArrangement,
   RegionWorkArrangements,
 } from "@/lib/types";
@@ -88,7 +87,8 @@ export function RecentMatchSearch() {
   const [regions, setRegions] = useState<JobRegion[]>([...JOB_REGIONS]);
   const [regionWorkArrangements, setRegionWorkArrangements] =
     useState<RegionWorkArrangements>(INITIAL_REGION_ARRANGEMENTS);
-  const [seniority, setSeniority] = useState<JobSeniorityFilter>("non_senior");
+  const [includeNonSenior, setIncludeNonSenior] = useState(true);
+  const [includeSenior, setIncludeSenior] = useState(false);
   const [postedWithinHours, setPostedWithinHours] = useState(24);
   const [rows, setRows] = useState<RecentJobMatch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +128,8 @@ export function RecentMatchSearch() {
       const matches = await endpoints.recentJobMatches(
         activeRegions,
         postedWithinHours,
-        seniority,
+        includeNonSenior,
+        includeSenior,
         regionWorkArrangements,
       );
       setRows(matches);
@@ -187,26 +188,26 @@ export function RecentMatchSearch() {
         <legend className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
           Seniority
         </legend>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {([
-            ["non_senior", "Non-senior"],
-            ["senior", "Senior"],
-            ["both", "Both"],
-          ] as const).map(([value, label]) => (
-            <label key={value} className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="job-seniority"
-                value={value}
-                checked={seniority === value}
-                onChange={() => setSeniority(value)}
-              />
-              {label}
-            </label>
-          ))}
+        <div className="mt-2 flex flex-wrap gap-4">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={includeNonSenior}
+              onChange={(event) => setIncludeNonSenior(event.target.checked)}
+            />
+            Non-senior
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={includeSenior}
+              onChange={(event) => setIncludeSenior(event.target.checked)}
+            />
+            Senior
+          </label>
         </div>
         <p className="mt-1 text-xs text-[var(--muted)]">
-          Jobs with unclear seniority are excluded from all three choices.
+          Jobs with unclear seniority remain eligible regardless of these selections.
         </p>
       </fieldset>
       <fieldset className="mb-3">

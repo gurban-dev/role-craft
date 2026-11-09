@@ -38,13 +38,18 @@ class ChatGPTGoogleJobsSource:
             for region, values in arrangements.items()
             if values
         )
-        seniority = criteria.extras.get("seniority")
-        seniority_instruction = {
-            "senior": "Prefer clearly senior roles only.",
-            "non_senior": "Prefer clearly non-senior roles only.",
-            "both": "Include clearly senior and clearly non-senior roles.",
-            None: "Exclude clearly senior roles, matching the legacy default.",
-        }.get(seniority, "")
+        include_non_senior = criteria.extras.get("include_non_senior")
+        include_senior = criteria.extras.get("include_senior")
+        if include_non_senior is True and include_senior is True:
+            seniority_instruction = "Include both senior and non-senior roles, plus unclear roles."
+        elif include_non_senior is True:
+            seniority_instruction = "Prefer non-senior roles, but include unclear seniority."
+        elif include_senior is True:
+            seniority_instruction = "Prefer senior roles, but include unclear seniority."
+        else:
+            seniority_instruction = (
+                "Use the default non-senior behavior, but include unclear roles."
+            )
         skills = criteria.extras.get("profile_skills") or []
         skill_hint = ", ".join(str(s) for s in skills[:8]) or "general software engineering"
         prompt = (

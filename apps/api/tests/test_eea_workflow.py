@@ -161,7 +161,8 @@ def test_work_arrangement_and_geography_are_conservative_and_region_specific() -
 def test_search_schema_requires_a_work_arrangement_in_a_selected_region() -> None:
     valid = EEAJobSearchRequest(
         regions=["Europe", "North America", "Africa"],
-        seniority="both",
+        include_non_senior=True,
+        include_senior=True,
         region_work_arrangements={
             "Europe": ["remote", "hybrid"],
             "North America": ["in_person"],
@@ -206,24 +207,42 @@ def test_hard_filters_apply_seniority_and_region_arrangements_together() -> None
             "Asia": ["hybrid"],
         },
     }
-    ok, evidence, meta = validate_hard_requirements(job, seniority="senior", **common)
+    ok, evidence, meta = validate_hard_requirements(
+        job, include_senior=True, include_non_senior=False, **common
+    )
     assert ok, evidence.reasons_rejected
     assert meta["market"] == "Europe"
     assert meta["work_arrangement"] == "remote"
 
-    ok, evidence, _ = validate_hard_requirements(job, seniority="both", **common)
+    ok, evidence, _ = validate_hard_requirements(
+        job, include_senior=True, include_non_senior=True, **common
+    )
     assert ok, evidence.reasons_rejected
 
-    ok, evidence, _ = validate_hard_requirements(job, seniority="non_senior", **common)
+    ok, evidence, _ = validate_hard_requirements(
+        job, include_senior=False, include_non_senior=True, **common
+    )
+    assert not ok
+    assert "seniority_filter_mismatch" in evidence.reasons_rejected
+
+    ok, evidence, _ = validate_hard_requirements(
+        job, include_senior=False, include_non_senior=False, **common
+    )
     assert not ok
     assert "seniority_filter_mismatch" in evidence.reasons_rejected
 
     job.seniority_label = None
     job.title = "Software Engineer"
     job.description = "English is the working language. We sponsor visas."
-    ok, evidence, _ = validate_hard_requirements(job, seniority="both", **common)
-    assert not ok
-    assert "seniority_unclassified" in evidence.reasons_rejected
+    for selected in (
+        {"include_senior": False, "include_non_senior": True},
+        {"include_senior": True, "include_non_senior": False},
+        {"include_senior": True, "include_non_senior": True},
+        {"include_senior": False, "include_non_senior": False},
+    ):
+        ok, evidence, _ = validate_hard_requirements(job, **selected, **common)
+        assert ok, evidence.reasons_rejected
+        assert evidence.seniority == "unknown_included"
 
     job.title = "Junior Software Engineer"
     job.description = "English is the working language. We sponsor visas. 2 years of experience."
@@ -231,10 +250,17 @@ def test_hard_filters_apply_seniority_and_region_arrangements_together() -> None
     job.remote_status = None
     job.raw_payload = {"workplaceType": "Hybrid"}
     common["region_work_arrangements"] = {"Europe": ["hybrid"], "Asia": ["remote"]}
-    ok, evidence, meta = validate_hard_requirements(job, seniority="non_senior", **common)
+    ok, evidence, meta = validate_hard_requirements(
+        job, include_senior=False, include_non_senior=True, **common
+    )
     assert ok, evidence.reasons_rejected
     assert meta["market"] == "Europe"
     assert meta["work_arrangement"] == "hybrid"
+
+    ok, evidence, _ = validate_hard_requirements(
+        job, include_senior=False, include_non_senior=False, **common
+    )
+    assert ok, evidence.reasons_rejected
 
     asia_remote = DiscoveredJob(
         title="Senior Software Engineer",

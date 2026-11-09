@@ -57,7 +57,8 @@ def validate_hard_requirements(
     now: datetime | None = None,
     hours: int = 24,
     regions: list[str] | None = None,
-    seniority: str | None = None,
+    include_non_senior: bool | None = None,
+    include_senior: bool | None = None,
     region_work_arrangements: dict[str, list[str]] | None = None,
 ) -> tuple[bool, FilterEvidence, dict[str, Any]]:
     """Return (ok, evidence, enriched metadata). Never invent missing hard facts."""
@@ -115,12 +116,19 @@ def validate_hard_requirements(
         evidence.seniority = "non_eng"
     else:
         classification = classify_job_seniority(item)
-        if seniority is not None:
-            evidence.seniority = classification
+        if include_non_senior is not None or include_senior is not None:
             if classification == "unknown":
-                evidence.reasons_rejected.append("seniority_unclassified")
-            elif seniority != "both" and classification != seniority:
-                evidence.reasons_rejected.append("seniority_filter_mismatch")
+                evidence.seniority = "unknown_included"
+            elif include_non_senior is True or include_senior is True:
+                evidence.seniority = classification
+                if (
+                    classification == "senior" and include_senior is not True
+                ) or (classification == "non_senior" and include_non_senior is not True):
+                    evidence.reasons_rejected.append("seniority_filter_mismatch")
+            else:
+                evidence.seniority = classification
+                if classification == "senior":
+                    evidence.reasons_rejected.append("seniority_filter_mismatch")
         elif title_looks_senior(item.title, item.description):
             evidence.reasons_rejected.append("seniority_too_high")
             evidence.seniority = "senior_or_lead"

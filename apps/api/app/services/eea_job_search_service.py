@@ -57,7 +57,8 @@ class EEAJobSearchService:
         sources: list[str] | None = None,
         regions: list[str] | None = None,
         posted_within_hours: int | None = None,
-        seniority: str | None = None,
+        include_non_senior: bool | None = None,
+        include_senior: bool | None = None,
         region_work_arrangements: dict[str, list[str]] | None = None,
     ) -> list[dict]:
         """Run phases 1–20 of the EEA workflow; return top qualifying rows (≤10)."""
@@ -92,7 +93,8 @@ class EEAJobSearchService:
             extras={
                 "regions": selected_regions,
                 "profile_skills": skills,
-                "seniority": seniority,
+                "include_non_senior": include_non_senior,
+                "include_senior": include_senior,
                 "region_work_arrangements": selected_work_arrangements,
             },
         )
@@ -118,7 +120,8 @@ class EEAJobSearchService:
                 now=now,
                 hours=hours,
                 regions=selected_regions,
-                seniority=seniority,
+                include_non_senior=include_non_senior,
+                include_senior=include_senior,
                 region_work_arrangements=selected_work_arrangements,
             )
             if not ok:

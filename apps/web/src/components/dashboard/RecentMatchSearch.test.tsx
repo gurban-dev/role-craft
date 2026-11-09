@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentMatchSearch } from "@/components/dashboard/RecentMatchSearch";
 
 vi.mock("@/lib/endpoints", () => ({
@@ -12,6 +12,8 @@ vi.mock("@/lib/endpoints", () => ({
 import { endpoints } from "@/lib/endpoints";
 
 describe("RecentMatchSearch", () => {
+  afterEach(cleanup);
+
   beforeEach(() => {
     vi.mocked(endpoints.recentJobMatches).mockReset();
   });
@@ -37,12 +39,13 @@ describe("RecentMatchSearch", () => {
       await userEvent.click(screen.getByRole("checkbox", { name: `Europe ${arrangement}` }));
       await userEvent.click(screen.getByRole("checkbox", { name: `Asia ${arrangement}` }));
     }
-    await userEvent.click(screen.getByRole("radio", { name: "Senior" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Senior" }));
     await userEvent.click(screen.getByTestId("recent-match-search"));
     expect(endpoints.recentJobMatches).toHaveBeenCalledWith(
       ["Europe", "Asia"],
       24,
-      "senior",
+      true,
+      true,
       {
         Europe: ["remote"],
         "North America": ["in_person", "remote", "hybrid"],
@@ -67,6 +70,85 @@ describe("RecentMatchSearch", () => {
     expect(screen.getByRole("link", { name: "https://careers.acme.example/jobs/1" })).toHaveAttribute(
       "href",
       "https://careers.acme.example/jobs/1",
+    );
+  });
+
+  it("sends independent seniority checkbox states, including an empty selection", async () => {
+    vi.mocked(endpoints.recentJobMatches).mockResolvedValue([]);
+    render(<RecentMatchSearch />);
+
+    const nonSenior = screen.getByRole("checkbox", { name: "Non-senior" });
+    const senior = screen.getByRole("checkbox", { name: "Senior" });
+    const search = screen.getByTestId("recent-match-search");
+    expect(screen.queryByRole("radio", { name: "Both" })).not.toBeInTheDocument();
+    expect(nonSenior).toBeChecked();
+    expect(senior).not.toBeChecked();
+
+    const arrangements = {
+      Europe: ["in_person", "remote", "hybrid"],
+      "North America": ["in_person", "remote", "hybrid"],
+      "South America": ["in_person", "remote", "hybrid"],
+      Asia: ["in_person", "remote", "hybrid"],
+      Africa: ["in_person", "remote", "hybrid"],
+    };
+    const regions = ["Europe", "North America", "South America", "Asia", "Africa"];
+
+    await userEvent.click(search);
+    expect(endpoints.recentJobMatches).toHaveBeenLastCalledWith(
+      regions,
+      24,
+      true,
+      false,
+      arrangements,
+    );
+
+    await userEvent.click(nonSenior);
+    await userEvent.click(senior);
+    expect(nonSenior).not.toBeChecked();
+    expect(senior).toBeChecked();
+    await userEvent.click(search);
+    expect(endpoints.recentJobMatches).toHaveBeenLastCalledWith(
+      regions,
+      24,
+      false,
+      true,
+      arrangements,
+    );
+
+    await userEvent.click(nonSenior);
+    expect(nonSenior).toBeChecked();
+    expect(senior).toBeChecked();
+    await userEvent.click(search);
+    expect(endpoints.recentJobMatches).toHaveBeenLastCalledWith(
+      regions,
+      24,
+      true,
+      true,
+      arrangements,
+    );
+
+    await userEvent.click(senior);
+    expect(nonSenior).toBeChecked();
+    expect(senior).not.toBeChecked();
+    await userEvent.click(search);
+    expect(endpoints.recentJobMatches).toHaveBeenLastCalledWith(
+      regions,
+      24,
+      true,
+      false,
+      arrangements,
+    );
+
+    await userEvent.click(nonSenior);
+    expect(nonSenior).not.toBeChecked();
+    expect(senior).not.toBeChecked();
+    await userEvent.click(search);
+    expect(endpoints.recentJobMatches).toHaveBeenLastCalledWith(
+      regions,
+      24,
+      false,
+      false,
+      arrangements,
     );
   });
 });

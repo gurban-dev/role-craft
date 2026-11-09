@@ -60,7 +60,8 @@ async def eea_search(
         sources=data.sources,
         regions=list(data.regions),
         posted_within_hours=data.posted_within_hours,
-        seniority=data.seniority,
+        include_non_senior=data.include_non_senior,
+        include_senior=data.include_senior,
         region_work_arrangements=data.region_work_arrangements,
     )
     return [EEAJobRow.model_validate(r) for r in rows]

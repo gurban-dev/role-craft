@@ -53,7 +53,6 @@ export type JobRegion =
   | "Africa";
 
 export type JobWorkArrangement = "in_person" | "remote" | "hybrid";
-export type JobSeniorityFilter = "non_senior" | "senior" | "both";
 export type RegionWorkArrangements = Record<JobRegion, JobWorkArrangement[]>;
 
 export type MatchAnalysis = {

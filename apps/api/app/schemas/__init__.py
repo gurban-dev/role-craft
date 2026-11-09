@@ -150,7 +150,6 @@ JobRegion = Literal[
     "Africa",
 ]
 JobWorkArrangement = Literal["in_person", "remote", "hybrid"]
-JobSeniorityFilter = Literal["non_senior", "senior", "both"]
 
 
 class EEAJobSearchRequest(BaseModel):
@@ -163,8 +162,9 @@ class EEAJobSearchRequest(BaseModel):
         max_length=5,
     )
     posted_within_hours: Literal[24, 72, 168, 720] = 24
-    # Optional for older clients; the dashboard always sends this explicitly.
-    seniority: JobSeniorityFilter | None = None
+    # Optional for older clients; the dashboard sends both checkbox values.
+    include_non_senior: bool | None = None
+    include_senior: bool | None = None
     region_work_arrangements: dict[JobRegion, list[JobWorkArrangement]] | None = None
 
     @model_validator(mode="after")
